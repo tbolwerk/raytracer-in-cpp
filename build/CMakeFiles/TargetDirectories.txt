@@ -1,0 +1,3 @@
+/Users/twanbolwerk/Documents/dev/raytracer-in-cpp/build/CMakeFiles/raytracer.dir
+/Users/twanbolwerk/Documents/dev/raytracer-in-cpp/build/CMakeFiles/edit_cache.dir
+/Users/twanbolwerk/Documents/dev/raytracer-in-cpp/build/CMakeFiles/rebuild_cache.dir
