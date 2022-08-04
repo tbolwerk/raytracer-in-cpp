@@ -216,6 +216,72 @@ class Canvas
         }
 };
 
+class Matrix
+{
+    private:
+        int rows;
+        int cols;
+        double ** m;
+    public:
+        Matrix(int rows, int cols)
+        {
+            this->rows = rows;
+            this->cols = cols;
+            m = new double*[rows];
+            for(int i = 0; i < rows; i ++){
+                m[i] = new double[cols]; 
+                for(int j = 0; j < cols; j ++){
+                    m[i][j] = 0.0;
+                }
+            }
+        }
+        Matrix(int rows, int cols, double * arr)
+        {
+            this->rows = rows;
+            this->cols = cols;
+            size_t n = sizeof(arr)/sizeof(arr[0]);
+            assert(rows + cols != n);
+
+            m = new double*[rows];
+            for(int i = 0; i < rows; i ++){
+                m[i] = new double[cols];
+                for(int j = 0; j < cols; j ++){
+                    m[i][j] = arr[i + j];
+                }
+            }
+        }
+        double ** getMatrix()
+        {
+            return m;
+        }
+        double* &operator[](int index){
+            return m[index];
+        }
+        Matrix operator *(const Matrix &other){
+            assert(other.rows != this.rows || other.cols != this.cols || other.rows != this.rows || other.cols != this.cols);
+            Matrix result = Matrix(rows, cols);
+            for(int row = 0; row < rows; row ++){
+                for(int col = 0; col < cols; col ++){
+                    for(int k = rows-1; k >= 0; k --){
+                        result[row][col] += m[row][k] * other.m[k][col];
+                    }
+                }
+            }
+            return result;
+        }
+
+        std::string toString(){
+            std::string result = "";
+            for(int i = 0; i < rows; i ++){
+                for(int j = 0; j < cols; j ++){
+                    result = result + " | " + std::to_string(m[i][j]) + " | ";
+                }
+                result = result + "\n";
+            }
+            return result;
+        }
+};
+
 Point to_point(Tuple tuple)
 {
     return Point(tuple.getX(), tuple.getY(), tuple.getZ());
@@ -298,5 +364,10 @@ int main(int argc, char * argv[])
         p = tick(e, p);
     }
     c.toPPM();
+    double arr[4] = {1,1,1,1};
+    Matrix m1 = Matrix(2,2,arr);
+    Matrix m2 = Matrix(2,2,arr);
+    Matrix m3 = m1 * m2;
+    std::cout << m3.toString() << std::endl;
     return 0;
 }
