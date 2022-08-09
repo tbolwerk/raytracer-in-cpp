@@ -212,10 +212,10 @@ class Canvas
         {
             return canvas[x][y];
         }
-        void toPPM()
+        void toPPM(const std::string file_name)
         {
              std::ofstream myfile;
-             myfile.open ("example.ppm");
+             myfile.open (file_name);
              if(myfile.is_open()){
                 myfile << "P3" << std::endl;
                 myfile << std::to_string(width) + " " + std::to_string(height) << std::endl;
@@ -283,6 +283,18 @@ class Matrix
                 }
             }
         }
+        Matrix inverse(){
+            assert(isInvertable() && "matrix is not invertable");
+            Matrix m2 = Matrix(rows, cols);
+            double det = determinant();
+            for(int i = 0; i < rows; i ++){
+                for(int j = 0; j < cols; j ++){
+                    double c = cofactor(i,j);
+                    m2[i][j] = c / det;
+                }
+            }
+            return m2;
+        }
         Matrix transpose(){
             Matrix result = Matrix(cols, rows);
             for(int i = 0; i < rows; i ++){
@@ -329,6 +341,9 @@ class Matrix
                 }
             }
             return det;
+        }
+        bool isInvertable(){
+            return determinant() != 0.0;
         }
         double ** getMatrix()
         {
@@ -452,12 +467,11 @@ int main(int argc, char * argv[])
         c.writePixel(p.getPosition().getX(), c.getHeight() - p.getPosition().getY(), Color(1,1,1));
         p = tick(e, p);
     }
-    c.toPPM();
-    double arr1[16] = {6,4,4,4,5,5,7,6,4,-9,3,-7,9,1,7,-6};
+    c.toPPM("example.png");
+    double arr1[16] = {8,-5,9,2,7,5,6,1,-6,0,9,6,-3,0,-9,-4};
     Matrix a = Matrix(4,4,arr1);
-    double det = a.determinant();
     std::cout << a.toString() << std::endl;
-    std::cout << "det(a) = " << std::to_string(det) << std::endl;
+    std::cout << a.inverse().toString() << std::endl;
 
     return 0;
 }
