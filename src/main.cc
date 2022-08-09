@@ -3,6 +3,7 @@
 #include <string>
 #include <cmath>      
 #include <vector>      
+#include <assert.h>      
 const double EPSILON = 0.00001;
 bool equal(double a, double b)
 {
@@ -37,6 +38,20 @@ class Tuple {
         double getW()
         {
             return w;
+        }
+        double &operator[](int index){
+            assert(index >= 0 && <= 4);
+            switch(index){
+                case 0:
+                    return x;
+                case 1:
+                    return y;
+                case 2:
+                    return z;
+                case 3:
+                    return w;
+            }
+            return x;
         }
         double magnitude()
         {
@@ -221,24 +236,22 @@ class Matrix
     private:
         int rows;
         int cols;
+        int size;
         double ** m;
     public:
         Matrix(int rows, int cols)
         {
             this->rows = rows;
             this->cols = cols;
+            this->size = (rows + cols) / 2;
             m = new double*[rows];
-            for(int i = 0; i < rows; i ++){
-                m[i] = new double[cols]; 
-                for(int j = 0; j < cols; j ++){
-                    m[i][j] = 0.0;
-                }
-            }
+            empty();
         }
         Matrix(int rows, int cols, double * arr)
         {
             this->rows = rows;
             this->cols = cols;
+            this->size = (rows + cols) / 2;
             size_t n = sizeof(arr)/sizeof(arr[0]);
             assert(rows + cols != n);
 
@@ -246,9 +259,76 @@ class Matrix
             for(int i = 0; i < rows; i ++){
                 m[i] = new double[cols];
                 for(int j = 0; j < cols; j ++){
-                    m[i][j] = arr[i + j];
+                    m[i][j] = arr[i * rows + j];
                 }
             }
+        }
+        void empty(){
+             for(int i = 0; i < rows; i ++){
+                m[i] = new double[cols]; 
+                for(int j = 0; j < cols; j ++){
+                        m[i][j] = 0.0;
+                }
+            }
+        }
+        void identity(){
+             for(int i = 0; i < rows; i ++){
+                m[i] = new double[cols]; 
+                for(int j = 0; j < cols; j ++){
+                    if(i == j){
+                        m[i][j] = 1.0;
+                    }else{
+                        m[i][j] = 0.0;
+                    }
+                }
+            }
+        }
+        Matrix transpose(){
+            Matrix result = Matrix(cols, rows);
+            for(int i = 0; i < rows; i ++){
+                for(int j = 0; j < cols; j ++){
+                    result[i][j] = m[j][i];
+                }
+            }
+            return result;
+        }
+        Matrix submatrix(int row, int col){
+            Matrix result = Matrix(rows - 1, cols - 1);
+            for(int i = 0; i < rows - 1; i ++){
+                int x = i;
+                if(i >= row){
+                     x += 1;
+                }
+                for(int j = 0; j < cols - 1; j ++){
+                    int y = j;
+                    if(j >= col){
+                        y += 1;
+                    }
+                    result[i][j] = m[x][y];
+                }
+            }
+            return result;
+        }
+        double minor(int row, int col){
+            return submatrix(row,col).determinant();
+        }
+        double cofactor(int row, int col){
+            if((row + col) % 2 == 0){
+                return minor(row, col);
+            }
+            return -minor(row,col);
+        }
+        double determinant(){
+            double det = 0.0;
+            assert(cols == rows);
+            if(size == 2){
+                det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+            }else{
+                for(int col = 0; col < size; col ++){
+                    det += m[0][col] * cofactor(0, col);
+                }
+            }
+            return det;
         }
         double ** getMatrix()
         {
@@ -257,19 +337,28 @@ class Matrix
         double* &operator[](int index){
             return m[index];
         }
-        Matrix operator *(const Matrix &other){
-            assert(other.rows != this.rows || other.cols != this.cols || other.rows != this.rows || other.cols != this.cols);
+        Matrix operator *(Matrix &other){
+            assert((other.rows != this.rows || other.cols != this.cols || other.rows != this.rows || other.cols != this.cols) && "rows and colums do not match");
             Matrix result = Matrix(rows, cols);
             for(int row = 0; row < rows; row ++){
                 for(int col = 0; col < cols; col ++){
-                    for(int k = rows-1; k >= 0; k --){
-                        result[row][col] += m[row][k] * other.m[k][col];
+                    for(int k = 0; k < size; k ++){
+                        result[row][col] += m[row][k] * other[k][col];
                     }
                 }
             }
             return result;
         }
-
+        Tuple operator *(Tuple &other){
+            assert(rows == 4 && "rows has to be eq to 4");
+            Tuple result = Tuple(0,0,0,0);
+            for(int row = 0; row < rows; row ++){
+                for(int col = 0; col < cols; col++){
+                    result[row] = m[row][col] * other[col];
+                }
+            }
+            return result;
+        }
         std::string toString(){
             std::string result = "";
             for(int i = 0; i < rows; i ++){
@@ -364,10 +453,11 @@ int main(int argc, char * argv[])
         p = tick(e, p);
     }
     c.toPPM();
-    double arr[4] = {1,1,1,1};
-    Matrix m1 = Matrix(2,2,arr);
-    Matrix m2 = Matrix(2,2,arr);
-    Matrix m3 = m1 * m2;
-    std::cout << m3.toString() << std::endl;
+    double arr1[16] = {6,4,4,4,5,5,7,6,4,-9,3,-7,9,1,7,-6};
+    Matrix a = Matrix(4,4,arr1);
+    double det = a.determinant();
+    std::cout << a.toString() << std::endl;
+    std::cout << "det(a) = " << std::to_string(det) << std::endl;
+
     return 0;
 }
