@@ -624,7 +624,7 @@ void chapter4(){
     Canvas c = Canvas(400, 400);
     Tuple twelve = t * origin;
     for(int i = 0; i < 12; i ++){
-        Matrix r = Matrix(4,4).identity().rotate_y(i *( 3.14 / 6)).scale(150,150,150).translate(200,200,200);
+        Matrix r = Matrix(4,4).identity().rotate_y(i * (M_PI / 6)).scale(150,150,150).translate(200,200,200);
         
         Tuple p = r * twelve;
         c.writePixel(p.getX(),  p.getZ(), Color(1,1,1));
