@@ -66,6 +66,9 @@ class Tuple {
             double magnitude = this->magnitude();
             return Tuple(x / magnitude, y / magnitude, z / magnitude, w / magnitude);
         }
+        Tuple operator *(double n){
+            return Tuple(x * n, y * n, z * n, w * n);
+        }
         Tuple operator /(const Tuple &other)
         {
             return Tuple(x / other.x, y / other.y, z / other.z, w / other.w);
@@ -304,7 +307,6 @@ class Matrix
         Matrix rotate_y(double r){
             Matrix result = this->copy();
             return Matrix::rotation_y(r) * result;
-            
         }
         Matrix rotate_z(double r){
             Matrix result = this->copy();
@@ -520,6 +522,76 @@ class Environment
         }
 };
 
+class Ray
+{
+    private:
+        Point origin;
+        Vector direction;
+    public:
+        Ray(Point origin, Vector direction)
+        {
+            this->origin = origin;
+            this->direction = direction;
+        }
+        Vector getDirection()
+        {
+            return this->direction;
+        }
+        Point getOrigin()
+        {
+            return this->origin;
+        }
+        Point position(double time)
+        {
+            return to_point(this->origin + this->direction * time);
+        }
+};
+
+class Hitable
+{
+    public:
+        std::vector<double> insersect(Ray ray)
+        { 
+            Tuple object_to_ray = ray.getOrigin() - Point(0,0,0);
+            double a = ray.getDirection().dot(ray.getDirection());
+            double b = 2 * ray.getDirection().dot(object_to_ray);
+            double c = object_to_ray.dot(object_to_ray) - 1;
+
+            double discriminant = pow(b,2) - 4 * a * c;
+
+            if(discriminant < 0){
+                return std::vector<double>();
+            }
+            double t1 = (-b - sqrt(discriminant)) / (2 * a);
+            double t2 = (-b + sqrt(discriminant)) / (2 * a);
+            std::vector<double> v = std::vector<double>();
+            v.push_back(t1);
+            v.push_back(t2);
+            return v;
+        }
+};
+
+class Sphere: public Hitable
+{
+    private:
+        Point position;
+        std::string id;
+        double radius;
+    public:
+        Sphere()
+        {
+            this->id = "unit";
+            this->position = Point(0,0,0);
+            this->radius = 1.0;
+        }
+        Sphere(std::string id, Point position, double radius)
+        {
+            this->id = id;
+            this->position = position;
+            this->radius = radius;
+        }
+};
+
 Projectile tick(Environment env, Projectile proj)
 {
     Point position = to_point(proj.getPosition() + proj.getVelocity());
@@ -543,7 +615,7 @@ void chapter1(){
         c.writePixel(p.getPosition().getX(), c.getHeight() - p.getPosition().getY(), Color(1,1,1));
         p = tick(e, p);
     }
-    c.toPPM("example.ppm");
+    c.toPPM("projectile.ppm");
 }
 
 void chapter4(){
@@ -555,7 +627,6 @@ void chapter4(){
         Matrix r = Matrix(4,4).identity().rotate_y(i *( 3.14 / 6)).scale(150,150,150).translate(200,200,200);
         
         Tuple p = r * twelve;
-        std::cout << p.toString() << std::endl;
         c.writePixel(p.getX(),  p.getZ(), Color(1,1,1));
     }
     c.toPPM("clock.ppm");
@@ -565,6 +636,13 @@ int main(int argc, char * argv[])
 {
     chapter1();
     chapter4();
+    Ray r = Ray(Point(0,0,5), Vector(0,0,1));
+    Sphere s = Sphere();
+    std::vector<double> xs = s.insersect(r);
+    for (double i: xs)
+    {
+        std::cout << std::to_string(i) << std::endl;
+    }
 
     return 0;
 }
