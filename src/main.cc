@@ -253,7 +253,7 @@ class Matrix
             this->cols = cols;
             this->size = (rows + cols) / 2;
             size_t n = sizeof(arr)/sizeof(arr[0]);
-            assert(rows + cols != n);
+            assert(rows + cols != n && "elements is not eq to the size");
 
             m = new double*[rows];
             for(int i = 0; i < rows; i ++){
@@ -271,7 +271,7 @@ class Matrix
                 }
             }
         }
-        void identity(){
+        void id(){
              for(int i = 0; i < rows; i ++){
                 m[i] = new double[cols]; 
                 for(int j = 0; j < cols; j ++){
@@ -282,6 +282,83 @@ class Matrix
                     }
                 }
             }
+        }
+        Matrix identity(){
+            Matrix result = Matrix(4,4);
+            result.id();
+            return result;
+        }
+        Matrix copy(){
+            double arr[rows * cols];
+            for(int i = 0; i < rows; i ++){
+                for(int j = 0; j < cols; j ++){
+                    arr[i * 4 + j] = m[i][j];
+                }
+            }
+            return Matrix(rows, cols, arr);
+        }
+        Matrix rotate_x(double r){
+            Matrix result = this->copy();
+            return Matrix::rotation_x(r) * result;
+        }
+        Matrix rotate_y(double r){
+            Matrix result = this->copy();
+            return Matrix::rotation_y(r) * result;
+            
+        }
+        Matrix rotate_z(double r){
+            Matrix result = this->copy();
+            return Matrix::rotation_z(r) * result;
+        }
+        Matrix scale(double x,double y, double z){
+            Matrix result = this->copy();
+            return Matrix::scaling(x,y,z) * result;
+        }
+        Matrix translate(double x, double y, double z){
+            Matrix result = this->copy();
+            return Matrix::translation(x,y,z) * result;
+        }
+        static Matrix shearing(double x_y, double x_z, double y_x, double y_z, double z_x, double z_y){
+            double arr[16] = {1,x_y,x_z,0,
+                              y_x,1,y_z,0,
+                              z_x,z_y,1,0,
+                              0,0,0,1};
+            return Matrix(4,4, arr);
+        }
+        static Matrix rotation_x(double r){
+            double arr[16] = {1,0,0,0,
+                              0,cos(r),-sin(r),0,
+                              0,sin(r),cos(r),0,
+                              0,0,0,1};
+            return Matrix(4,4, arr);
+        }
+        static Matrix rotation_z(double r){
+            double arr[16] = {cos(r),-sin(r),0,0,
+                              sin(r),cos(r),0,0,
+                              0,0,1,0,
+                              0,0,0,1};
+            return Matrix(4,4, arr);
+        }
+        static Matrix rotation_y(double r){
+            double arr[16] = {cos(r),0,sin(r),0,
+                              0,1,0,0,
+                              -sin(r),0,cos(r),0,
+                              0,0,0,1};
+            return Matrix(4,4, arr);
+        }
+        static Matrix translation(double x, double y, double z){
+            double arr[16] = {1,0,0,x,
+                              0,1,0,y,
+                              0,0,1,z,
+                              0,0,0,1};
+            return Matrix(4,4, arr);
+        }
+        static Matrix scaling(double x, double y, double z){
+            double arr[16] = {x,0,0,0,
+                              0,y,0,0,
+                              0,0,z,0,
+                              0,0,0,1};
+            return Matrix(4,4, arr);
         }
         Matrix inverse(){
             assert(isInvertable() && "matrix is not invertable");
@@ -369,7 +446,7 @@ class Matrix
             Tuple result = Tuple(0,0,0,0);
             for(int row = 0; row < rows; row ++){
                 for(int col = 0; col < cols; col++){
-                    result[row] = m[row][col] * other[col];
+                    result[row] += m[row][col] * other[col];
                 }
             }
             return result;
@@ -450,8 +527,7 @@ Projectile tick(Environment env, Projectile proj)
     return Projectile(position, velocity);
 }
 
-int main(int argc, char * argv[])
-{
+void chapter1(){
     Point start = Point(0,1,0);
     Vector velocity = to_vector(Vector(1,1.8,0).normalize() * Vector(11.25, 11.25, 11.25));
     Projectile p = Projectile(start, velocity);
@@ -467,11 +543,28 @@ int main(int argc, char * argv[])
         c.writePixel(p.getPosition().getX(), c.getHeight() - p.getPosition().getY(), Color(1,1,1));
         p = tick(e, p);
     }
-    c.toPPM("example.png");
-    double arr1[16] = {8,-5,9,2,7,5,6,1,-6,0,9,6,-3,0,-9,-4};
-    Matrix a = Matrix(4,4,arr1);
-    std::cout << a.toString() << std::endl;
-    std::cout << a.inverse().toString() << std::endl;
+    c.toPPM("example.ppm");
+}
+
+void chapter4(){
+    Matrix t = Matrix(4,4).identity().translate(0,0,1);
+    Tuple origin = Tuple(0,0,0,1);
+    Canvas c = Canvas(400, 400);
+    Tuple twelve = t * origin;
+    for(int i = 0; i < 12; i ++){
+        Matrix r = Matrix(4,4).identity().rotate_y(i *( 3.14 / 6)).scale(150,150,150).translate(200,200,200);
+        
+        Tuple p = r * twelve;
+        std::cout << p.toString() << std::endl;
+        c.writePixel(p.getX(),  p.getZ(), Color(1,1,1));
+    }
+    c.toPPM("clock.ppm");
+}
+
+int main(int argc, char * argv[])
+{
+    chapter1();
+    chapter4();
 
     return 0;
 }
