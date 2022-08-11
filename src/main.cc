@@ -547,40 +547,52 @@ class Ray
         }
 };
 
-class Hitable
+class Object
+{
+    protected:
+        std::string id;
+        Point position;
+    public:
+        std::string toString()
+        {
+            return "Object {" + id + " ," + "Position " + position.toString() + "}";
+        }
+    
+};
+
+class Intersection
+{
+    private:
+        double time;
+        Object* object;
+    public:
+        Intersection(double time, Object* object)
+        {
+            this->time = time;
+            this->object = object;
+        }
+        double getTime(){return time;};
+        Object* getObject() {return object;};
+        std::string toString()
+        {
+            return "{" + std::to_string(time) + ", " + object->toString() + "}";
+        }
+};
+
+class Hitable: public Object
 {
     public:
-        std::vector<double> insersect(Ray ray)
-        { 
-            Tuple object_to_ray = ray.getOrigin() - Point(0,0,0);
-            double a = ray.getDirection().dot(ray.getDirection());
-            double b = 2 * ray.getDirection().dot(object_to_ray);
-            double c = object_to_ray.dot(object_to_ray) - 1;
-
-            double discriminant = pow(b,2) - 4 * a * c;
-
-            if(discriminant < 0){
-                return std::vector<double>();
-            }
-            double t1 = (-b - sqrt(discriminant)) / (2 * a);
-            double t2 = (-b + sqrt(discriminant)) / (2 * a);
-            std::vector<double> v = std::vector<double>();
-            v.push_back(t1);
-            v.push_back(t2);
-            return v;
-        }
+        virtual std::vector<Intersection> insersect(Ray ray) = 0; 
 };
 
 class Sphere: public Hitable
 {
     private:
-        Point position;
-        std::string id;
         double radius;
     public:
         Sphere()
         {
-            this->id = "unit";
+            this->id = "unit_sphere";
             this->position = Point(0,0,0);
             this->radius = 1.0;
         }
@@ -590,6 +602,27 @@ class Sphere: public Hitable
             this->position = position;
             this->radius = radius;
         }
+        public:
+            std::vector<Intersection> insersect(Ray ray)
+            {
+                Tuple object_to_ray = ray.getOrigin() - this->position;
+                double a = ray.getDirection().dot(ray.getDirection());
+                double b = 2 * ray.getDirection().dot(object_to_ray);
+                double c = object_to_ray.dot(object_to_ray) - this->radius; //TODO: this->radius might be replaced with just 1
+
+                double discriminant = pow(b,2) - 4 * a * c;
+
+                if(discriminant < 0){
+                    return std::vector<Intersection>();
+                }
+                double t1 = (-b - sqrt(discriminant)) / (2 * a);
+                double t2 = (-b + sqrt(discriminant)) / (2 * a);
+                std::vector<Intersection> v = std::vector<Intersection>();
+                
+                v.push_back(Intersection(t1, this));
+                v.push_back(Intersection(t2, this));
+                return v;
+            }
 };
 
 Projectile tick(Environment env, Projectile proj)
@@ -636,12 +669,12 @@ int main(int argc, char * argv[])
 {
     chapter1();
     chapter4();
-    Ray r = Ray(Point(0,0,5), Vector(0,0,1));
+    Ray r = Ray(Point(0,0,-5), Vector(0,0,1));
     Sphere s = Sphere();
-    std::vector<double> xs = s.insersect(r);
-    for (double i: xs)
+    std::vector<Intersection> xs = s.insersect(r);
+    for (Intersection i: xs)
     {
-        std::cout << std::to_string(i) << std::endl;
+        std::cout << i.toString() << std::endl;
     }
 
     return 0;
