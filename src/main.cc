@@ -3,6 +3,7 @@
 #include <string>
 #include <cmath>      
 #include <vector>      
+#include <queue>
 #include <assert.h>      
 const double EPSILON = 0.00001;
 bool equal(double a, double b)
@@ -573,9 +574,39 @@ class Intersection
         }
         double getTime(){return time;};
         Object* getObject() {return object;};
-        std::string toString()
+        std::string toString() const
         {
             return "{" + std::to_string(time) + ", " + object->toString() + "}";
+        }
+        bool operator >(const Intersection &intersection) const
+        {
+            return this->time > intersection.time;
+        }
+};
+
+class Intersections
+{
+    private:
+        std::priority_queue<Intersection, std::vector<Intersection>, std::greater<Intersection> > intersections;
+    public:
+        Intersections(std::vector<Intersection> intersections)
+        {
+            this->intersections = std::priority_queue<Intersection, std::vector<Intersection>, std::greater<Intersection> >(intersections.begin(), intersections.end());
+        }
+        std::priority_queue<Intersection, std::vector<Intersection>, std::greater<Intersection> > getIntersections(){
+            return this->intersections;
+        }
+        void pop()
+        {
+            this->intersections.pop();
+        }
+        Intersection top()
+        {
+            return this->intersections.top();
+        }
+        bool empty()
+        {
+            return this->intersections.empty();
         }
 };
 
@@ -671,10 +702,13 @@ int main(int argc, char * argv[])
     chapter4();
     Ray r = Ray(Point(0,0,-5), Vector(0,0,1));
     Sphere s = Sphere();
-    std::vector<Intersection> xs = s.insersect(r);
-    for (Intersection i: xs)
+    std::vector<Intersection> is = s.insersect(r);
+    Intersections xs = Intersections(is);
+
+    while (!xs.empty())
     {
-        std::cout << i.toString() << std::endl;
+        std::cout << xs.top().toString() << std::endl;
+        xs.pop();
     }
 
     return 0;
