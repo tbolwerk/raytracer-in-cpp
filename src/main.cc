@@ -445,7 +445,7 @@ class Matrix
             }
             return result;
         }
-        Tuple operator *(Tuple &other){
+        Tuple operator *(Tuple other){
             assert(rows == 4 && "rows has to be eq to 4");
             Tuple result = Tuple(0,0,0,0);
             for(int row = 0; row < rows; row ++){
@@ -547,6 +547,10 @@ class Ray
         {
             return to_point(this->origin + this->direction * time);
         }
+        Ray transform(Matrix transform)
+        {
+            return Ray(to_point(transform * this->origin), to_vector(transform * this->direction));
+        }
 };
 
 class Object
@@ -554,12 +558,20 @@ class Object
     protected:
         std::string id;
         Point position;
+        Matrix transformation = Matrix(4,4).identity();
     public:
         std::string toString()
         {
             return "Object {" + id + " ," + "Position " + position.toString() + "}";
         }
-    
+        void setTransformation(Matrix transformation)
+        {
+            this->transformation = transformation;
+        }
+        Matrix getTransformation()
+        {
+            return this->transformation;
+        }
 };
 
 class Intersection
@@ -628,7 +640,7 @@ class Intersections
 class Hitable: public Object
 {
     public:
-        virtual std::vector<Intersection> insersect(Ray ray) = 0; 
+        virtual std::vector<Intersection> intersect(Ray ray) = 0; 
 };
 
 class Sphere: public Hitable
@@ -649,11 +661,12 @@ class Sphere: public Hitable
             this->radius = radius;
         }
         public:
-            std::vector<Intersection> insersect(Ray ray)
+            std::vector<Intersection> intersect(Ray ray)
             {
-                Tuple object_to_ray = ray.getOrigin() - this->position;
-                double a = ray.getDirection().dot(ray.getDirection());
-                double b = 2 * ray.getDirection().dot(object_to_ray);
+                Ray localRay = ray.transform(transformation.inverse());
+                Tuple object_to_ray = localRay.getOrigin() - this->position;
+                double a = localRay.getDirection().dot(localRay.getDirection());
+                double b = 2 * localRay.getDirection().dot(object_to_ray);
                 double c = object_to_ray.dot(object_to_ray) - this->radius; //TODO: this->radius might be replaced with just 1
 
                 double discriminant = pow(b,2) - 4 * a * c;
@@ -699,7 +712,7 @@ void chapter1(){
 
 void chapter4(){
     Matrix t = Matrix(4,4).identity().translate(0,0,1);
-    Tuple origin = Tuple(0,0,0,1);
+    Tuple origin = Point(0,0,0);
     Canvas c = Canvas(400, 400);
     Tuple twelve = t * origin;
     for(int i = 0; i < 12; i ++){
@@ -711,22 +724,42 @@ void chapter4(){
     c.toPPM("clock.ppm");
 }
 
+void chapter5(){
+    double wallZ = 10;
+    double wallSize = 7;
+    int canvasPixels = 100;
+    double pixelSize = wallSize / canvasPixels;
+    double half = wallSize / 2;
+    Canvas c = Canvas(canvasPixels,canvasPixels);
+    Point rayOrigin = Point(0,0,-5);
+    Color red = Color(1,0,0);
+    Sphere shape = Sphere();
+    for(int y = 0; y < canvasPixels - 1; y ++)
+    {
+        double world_y = half - pixelSize * y;
+        for(int x = 0; x < canvasPixels - 1; x ++)
+        {
+            double world_x = -half + pixelSize * x;
+            Point position = Point(world_x,world_y,wallZ);
+
+            Ray r = Ray(rayOrigin, to_vector((position - rayOrigin).normalize()));
+            Intersections xs = Intersections(shape.intersect(r));
+            while(!xs.empty()){
+                std::optional<Intersection> m_intersection = xs.hit();
+                if(m_intersection.has_value()){
+                    c.writePixel(x,y,red);
+                }
+            }
+        }
+    }
+    c.toPPM("red_circle.ppm");
+}
+
 int main(int argc, char * argv[])
 {
     chapter1();
     chapter4();
-    Ray r = Ray(Point(0,0,5), Vector(0,0,1));
-    Sphere s = Sphere();
-    std::vector<Intersection> is = s.insersect(r);
-    Intersections xs = Intersections(is);
-
-    while (!xs.empty())
-    {
-        std::optional<Intersection> maybeIntersection = xs.hit();
-        if(maybeIntersection.has_value()){
-            std::cout << maybeIntersection->toString() << std::endl;
-        }
-    }
+    chapter5();
 
     return 0;
 }
