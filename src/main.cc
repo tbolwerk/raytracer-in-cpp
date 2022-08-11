@@ -5,6 +5,7 @@
 #include <vector>      
 #include <queue>
 #include <assert.h>      
+#include <optional>
 const double EPSILON = 0.00001;
 bool equal(double a, double b)
 {
@@ -572,8 +573,8 @@ class Intersection
             this->time = time;
             this->object = object;
         }
-        double getTime(){return time;};
-        Object* getObject() {return object;};
+        double getTime() const {return time;};
+        Object* getObject() const {return object;};
         std::string toString() const
         {
             return "{" + std::to_string(time) + ", " + object->toString() + "}";
@@ -607,6 +608,20 @@ class Intersections
         bool empty()
         {
             return this->intersections.empty();
+        }
+        std::optional<Intersection> hit()  
+        {
+             while (!this->intersections.empty())
+             {
+                if(this->intersections.top().getTime() >= 0){
+
+                    Intersection result = this->intersections.top();
+                    this->intersections.pop();
+                    return std::optional<Intersection>(result);
+                }
+                this->intersections.pop();
+             }
+             return std::nullopt;
         }
 };
 
@@ -700,15 +715,17 @@ int main(int argc, char * argv[])
 {
     chapter1();
     chapter4();
-    Ray r = Ray(Point(0,0,-5), Vector(0,0,1));
+    Ray r = Ray(Point(0,0,5), Vector(0,0,1));
     Sphere s = Sphere();
     std::vector<Intersection> is = s.insersect(r);
     Intersections xs = Intersections(is);
 
     while (!xs.empty())
     {
-        std::cout << xs.top().toString() << std::endl;
-        xs.pop();
+        std::optional<Intersection> maybeIntersection = xs.hit();
+        if(maybeIntersection.has_value()){
+            std::cout << maybeIntersection->toString() << std::endl;
+        }
     }
 
     return 0;
