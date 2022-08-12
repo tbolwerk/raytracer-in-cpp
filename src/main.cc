@@ -95,6 +95,14 @@ class Tuple {
         {
             return (x == other.x && y == other.y && z == other.z && w == other.w);
         }
+        bool operator <(const Tuple &other) const
+        {
+            return this->x < other.x && this->y < other.y && this->z < other.z && this->w < other.w;
+        }
+        bool operator <=(const Tuple &other) const
+        {
+            return this->x <= other.x && this->y <= other.y && this->z <= other.z && this->w <= other.w;
+        }
         std::string toString()
         {
             return "{" +  std::to_string(x) + ", " +  std::to_string(y) + ", " +  std::to_string(z) + ", " +  std::to_string(w) + "}";
@@ -110,6 +118,14 @@ class Vector: public Tuple {
             this-> z = z;
             this-> w = 0.0;
         }
+        bool operator <(const Vector &other) const
+        {
+            return this->x < other.x && this->y < other.y && this->z < other.z;
+        }
+        bool operator <=(const Vector &other) const
+        {
+            return this->x <= other.x && this->y <= other.y && this->z <= other.z;
+        }
         Vector cross(const Vector &other)
         {
             return Vector(y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x);
@@ -118,6 +134,14 @@ class Vector: public Tuple {
         {
             double magnitude = this->magnitude();
             return Vector(x / magnitude, y / magnitude, z / magnitude);
+        }
+        Vector copy(){
+            return Vector(x,y,z);
+        }
+        Vector reflect(Vector &other)
+        {
+            Tuple result = copy() - other * 2 * this->dot(other);
+            return Vector(result.getX(), result.getY(),result.getZ());
         }
 };
 
@@ -131,6 +155,14 @@ class Point: public Tuple {
             this->z = z;
             this->w = 1.0;
          }
+        bool operator <(const Point &other) const
+        {
+            return this->x < other.x && this->y < other.y && this->z < other.z;
+        }
+        bool operator <=(const Point &other) const
+        {
+            return this->x <= other.x && this->y <= other.y && this->z <= other.z;
+        }
 };
 
 int clamp(double a, int min, int max)
@@ -152,6 +184,7 @@ class Color: public Tuple {
         double blue;
 
     public:
+        Color(){}
         Color(double red, double green, double blue)
         {
             this->x = this->red = red;
@@ -170,6 +203,14 @@ class Color: public Tuple {
         double getBlue()
         {
             return blue;
+        }
+        static Color white()
+        {
+            return Color(1,1,1);
+        }
+        static Color black()
+        {
+            return Color(0,0,0);
         }
         Color hadamardProduct(const Color &other)
         {
@@ -553,13 +594,75 @@ class Ray
         }
 };
 
+class Material
+{
+    private:
+        Color color;
+        double ambient;
+        double diffuse;
+        double specular;
+        double shininess;
+    public:
+        Material()
+        {
+            this->color = Color(1,1,1);
+            this->ambient = 0.1;
+            this->diffuse = 0.9;
+            this->specular = 0.9;
+            this->shininess = 200.0;
+        }
+        void setAmbient(double ambient)
+        {
+            this->ambient = ambient;
+        }
+        Color getColor()
+        {
+            return this->color;
+        }
+        double getAmbient()
+        {
+            return this->ambient;
+        }
+        double getDiffuse()
+        {
+            return this->diffuse;
+        }
+        double getShininess()
+        {
+            return this->shininess;
+        }
+        double getSpecular()
+        {
+            return this->specular;
+        }
+        void setColor(Color color)
+        {
+            this->color = color;
+        }
+        void setDiffuse(double diffuse)
+        {
+            this->diffuse = diffuse;
+        }
+        void setShininess(double shininess)
+        {
+            this->shininess = shininess;
+        }
+        void setSpecular(double specular)
+        {
+            this->specular = specular;
+        }
+};
+
 class Object
 {
     protected:
         std::string id;
         Point position;
         Matrix transformation = Matrix(4,4).identity();
+        Material material;
     public:
+        virtual Vector normalAt(Point p) = 0;
+
         std::string toString()
         {
             return "Object {" + id + " ," + "Position " + position.toString() + "}";
@@ -571,6 +674,14 @@ class Object
         Matrix getTransformation()
         {
             return this->transformation;
+        }
+        void setMaterial(Material material)
+        {
+            this->material = material;
+        }
+        Material getMaterial()
+        {
+            return this->material;
         }
 };
 
@@ -653,6 +764,8 @@ class Sphere: public Hitable
             this->id = "unit_sphere";
             this->position = Point(0,0,0);
             this->radius = 1.0;
+            this->material = Material();
+            this->material.setAmbient(1);
         }
         Sphere(std::string id, Point position, double radius)
         {
@@ -682,7 +795,66 @@ class Sphere: public Hitable
                 v.push_back(Intersection(t2, this));
                 return v;
             }
+            Vector normalAt(Point world_point){
+                Tuple object_point = this->transformation.inverse() * world_point;
+                Tuple object_normal = object_point - this->position;
+                Vector world_normal = to_vector(this->transformation.inverse().transpose() * object_normal);
+                return world_normal.normalize();
+            }
 };
+
+class PointLight
+{
+    private:
+        Point position;
+        Color intensity;
+    public:
+        PointLight(Point position, Color intensity)
+        {
+            this->position = position;
+            this->intensity = intensity;
+        }
+        Point getPosition()
+        {
+            return this->position;
+        }
+        Color getIntensity()
+        {
+            return this->intensity;
+        }
+};
+
+Color lighting(Material material, PointLight light, Point point, Vector eyev, Vector normalv)
+{
+
+    Color effective_color = to_color(material.getColor() * light.getIntensity());
+    Vector lightv = to_vector((light.getPosition() - point).normalize());
+    Color ambient = to_color(effective_color * material.getAmbient());
+    double light_dot_normal = lightv.dot(normalv);
+    Color diffuse;
+    Color specular;
+    if(light_dot_normal < 0)
+    {
+        diffuse = Color::black();
+        specular = Color::black();
+    }
+    else
+    {
+        diffuse = to_color(effective_color * material.getDiffuse() * light_dot_normal);
+        Vector reflectv = to_vector((lightv * -1)).reflect(normalv);
+        double reflect_dot_eye = reflectv.dot(eyev);
+        if(reflect_dot_eye <= 0)
+        {
+            specular = Color::black();
+        }
+        else
+        {
+            double factor = pow(reflect_dot_eye, material.getShininess());
+            specular = to_color(light.getIntensity() * material.getSpecular() * factor);
+        }
+    }
+    return to_color(ambient + diffuse + specular);
+}
 
 Projectile tick(Environment env, Projectile proj)
 {
@@ -755,11 +927,74 @@ void chapter5(){
     c.toPPM("red_circle.ppm");
 }
 
+void chapter6()
+{
+    Sphere shape = Sphere();
+    Material material = Material();
+    material.setColor(Color(1, 0.2, 1));
+    shape.setMaterial(material);
+    Point light_position = Point(-10,10,-10);
+    Color light_color = Color(1,1,1);
+    PointLight light = PointLight(light_position, light_color);
+
+    double wallZ = 10;
+    double wallSize = 7;
+    int canvasPixels = 500;
+    double pixelSize = wallSize / canvasPixels;
+    double half = wallSize / 2;
+    Canvas c = Canvas(canvasPixels,canvasPixels);
+    Point rayOrigin = Point(0,0,-5);
+    for(int y = 0; y < canvasPixels - 1; y ++)
+    {
+        double world_y = half - pixelSize * y;
+        for(int x = 0; x < canvasPixels - 1; x ++)
+        {
+            double world_x = -half + pixelSize * x;
+            Point position = Point(world_x,world_y,wallZ);
+
+            Ray r = Ray(rayOrigin, to_vector((position - rayOrigin).normalize()));
+       
+            Intersections xs = Intersections(shape.intersect(r));
+            while(!xs.empty()){
+                std::optional<Intersection> m_intersection = xs.hit();
+                if(m_intersection.has_value()){
+                    Intersection hit = m_intersection.value();
+                    Point point = r.position(hit.getTime());
+                    Vector normal = to_vector(hit.getObject()->normalAt(point));
+                    Vector eye = to_vector(r.getDirection() * -1);
+                    Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
+                    c.writePixel(x,y,color);
+                }
+            }
+        }
+    }
+    c.toPPM("purple_3d_circle.ppm");
+}
+
 int main(int argc, char * argv[])
 {
     chapter1();
     chapter4();
     chapter5();
+    chapter6();
+
+    Material m = Material();
+    Point position = Point(0,0,0);
+    Vector eyev = Vector(0,0,-1);
+    Vector normalv = Vector(0,0,-1);
+    PointLight light = PointLight(Point(0,10,-10), Color(1,1,1));
+    Color result = lighting(m,light, position, eyev, normalv);
+    std::cout << to_vector(result).toString() << std::endl;
+
+    Vector v = Vector(1,-1,0);
+    Vector n = Vector(0,1,0);
+    Vector r = v.reflect(n);
+    std::cout << r.toString() << std::endl;
+
+    Sphere s = Sphere();
+    s.setTransformation(Matrix::translation(0,1,0));
+    Vector na = s.normalAt(Point(0, 1.70711, -0.70711));
+    std::cout << na.toString() << std::endl;
 
     return 0;
 }
