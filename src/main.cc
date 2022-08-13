@@ -717,6 +717,10 @@ class Intersections
     private:
         std::priority_queue<Intersection, std::vector<Intersection>, std::greater<Intersection> > intersections;
     public:
+        Intersections()
+        {
+            this->intersections = std::priority_queue<Intersection, std::vector<Intersection>, std::greater<Intersection> >();
+        }
         Intersections(std::vector<Intersection> intersections)
         {
             this->intersections = std::priority_queue<Intersection, std::vector<Intersection>, std::greater<Intersection> >(intersections.begin(), intersections.end());
@@ -727,6 +731,13 @@ class Intersections
         void pop()
         {
             this->intersections.pop();
+        }
+        void push(std::vector<Intersection> intersections)
+        {
+            for (Intersection i : intersections)
+            {
+                this->intersections.push(i);
+            }
         }
         Intersection top()
         {
@@ -922,7 +933,46 @@ class World
         {
             return lighting(comps.getObject()->getMaterial(), this->light, comps.getPoint(), comps.getEyev(), comps.getNormalv());
         }
+        Color colorAt(Ray ray)
+        {
+            Intersections xs = intersect_world(ray);
+            while(!xs.empty()){
+                std::optional<Intersection> m_intersection = xs.hit();
+                if(m_intersection.has_value()){
+                    Intersection hit = m_intersection.value();
+                    Computation comps = Computation(hit, ray);
+                    return shadeHit(comps);
+                }
+            }
+            return Color::black();
+        }
+        Intersections intersect_world(Ray ray)
+        {
+           Intersections intersections = Intersections();
+           for(Object* obj : this->objects)
+           {
+                Hitable* hitable_obj = dynamic_cast<Hitable*>(obj);
+                if(hitable_obj != NULL) {
+                    intersections.push(hitable_obj->intersect(ray));
+                }
+            }
+            return intersections;
+        }
 };
+
+Matrix view_transform(Point from, Point to, Vector up)
+{
+    Vector forward = to_vector((to - from).normalize());
+    Vector upn = to_vector(up.normalize());
+    Vector left = to_vector(forward.cross(upn));
+    Tuple true_up = left.cross(forward);
+    double arr[16] = {left.getX(), left.getY(), left.getZ(), 0,
+                      true_up.getX(), true_up.getY(), true_up.getZ(), 0,
+                      -forward.getX(), -forward.getY(), -forward.getZ(), 0,
+                      0,0,0,1};
+    Matrix orientation = Matrix(4,4,arr);
+    return orientation.translate(-from.getX(), -from.getY(), -from.getZ());
+}
 
 Projectile tick(Environment env, Projectile proj)
 {
@@ -930,6 +980,68 @@ Projectile tick(Environment env, Projectile proj)
     Vector velocity = to_vector(proj.getVelocity() + env.getGravity() + env.getWind());
     return Projectile(position, velocity);
 }
+
+class Camera
+{
+    private:
+        int hsize;
+        int vsize;
+        double field_of_view;
+        Matrix transform = Matrix(4,4).identity();
+        double pixel_size;
+        int half_width;
+        int half_height;
+    public:
+        Camera(int hsize, int vsize, double field_of_view) {
+            this->hsize = hsize;
+            this->vsize = vsize;
+            this->field_of_view = field_of_view;
+
+            int half_view = tan(this->field_of_view / 2);
+            int aspect = this->hsize / this->vsize;
+            if(aspect >= 1)
+            {
+                this->half_width = half_view;
+                this->half_height = half_view / aspect;
+            }
+            else
+            {
+                this->half_width = half_view * aspect;
+                this->half_height = half_view;
+            }
+            this->pixel_size =  (this->half_width * 2) / this->hsize;
+        }
+        Ray rayForPixel(int px, int py)
+        {
+            int xoffset = (px + 0.5) * this->pixel_size;
+            int yoffset = (py + 0.5) * this->pixel_size;
+
+            int world_x = this->half_width - xoffset;
+            int world_y = this->half_height - yoffset;
+
+            Tuple pixel = this->transform.inverse() * Point(world_x, world_y, -1);
+            Tuple origin = this->transform.inverse() * Point(0,0,0);
+            Tuple direction = (pixel - origin).normalize();
+            
+            return Ray(to_point(origin), to_vector(direction));
+        }
+        Canvas render(World world)
+        {
+            Canvas image = Canvas(this->hsize, this->vsize);
+
+            for(int y = 0; y < this->vsize; y ++)
+            {
+                for(int x = 0; x < this->hsize; x ++)
+                {
+                    Ray ray = this->rayForPixel(x,y);
+                    Color color = world.colorAt(ray);
+                    image.writePixel(x,y,color);
+                }
+            }
+
+            return image;
+        }
+};
 
 void chapter1(){
     Point start = Point(0,1,0);
