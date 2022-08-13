@@ -919,34 +919,11 @@ class World
     private:
         Light light;
         std::vector<Object*> objects = std::vector<Object*>();
-    public:
-        World() {}
-        void addObject(Object* object)
-        {
-            this->objects.push_back(object);
-        }
-        void setLight(Light light)
-        {
-            this->light = light;
-        }
         Color shadeHit(Computation comps)
         {
             return lighting(comps.getObject()->getMaterial(), this->light, comps.getPoint(), comps.getEyev(), comps.getNormalv());
         }
-        Color colorAt(Ray ray)
-        {
-            Intersections xs = intersect_world(ray);
-            while(!xs.empty()){
-                std::optional<Intersection> m_intersection = xs.hit();
-                if(m_intersection.has_value()){
-                    Intersection hit = m_intersection.value();
-                    Computation comps = Computation(hit, ray);
-                    return shadeHit(comps);
-                }
-            }
-            return Color::black();
-        }
-        Intersections intersect_world(Ray ray)
+        Intersections intersectWorld(Ray ray)
         {
            Intersections intersections = Intersections();
            for(Object* obj : this->objects)
@@ -957,6 +934,29 @@ class World
                 }
             }
             return intersections;
+        }
+    public:
+        World() {}
+        void addObject(Object* object)
+        {
+            this->objects.push_back(object);
+        }
+        void setLight(Light light)
+        {
+            this->light = light;
+        }
+        Color colorAt(Ray ray)
+        {
+            Intersections xs = intersectWorld(ray);
+            while(!xs.empty()){
+                std::optional<Intersection> m_intersection = xs.hit();
+                if(m_intersection.has_value()){
+                    Intersection hit = m_intersection.value();
+                    Computation comps = Computation(hit, ray);
+                    return shadeHit(comps);
+                }
+            }
+            return Color::black();
         }
 };
 
@@ -991,6 +991,20 @@ class Camera
         double pixel_size;
         int half_width;
         int half_height;
+        Ray rayForPixel(int px, int py)
+        {
+            int xoffset = (px + 0.5) * this->pixel_size;
+            int yoffset = (py + 0.5) * this->pixel_size;
+
+            int world_x = this->half_width - xoffset;
+            int world_y = this->half_height - yoffset;
+
+            Tuple pixel = this->transform.inverse() * Point(world_x, world_y, -1);
+            Tuple origin = this->transform.inverse() * Point(0,0,0);
+            Tuple direction = (pixel - origin).normalize();
+            
+            return Ray(to_point(origin), to_vector(direction));
+        }
     public:
         Camera(int hsize, int vsize, double field_of_view) {
             this->hsize = hsize;
@@ -1010,20 +1024,6 @@ class Camera
                 this->half_height = half_view;
             }
             this->pixel_size =  (this->half_width * 2) / this->hsize;
-        }
-        Ray rayForPixel(int px, int py)
-        {
-            int xoffset = (px + 0.5) * this->pixel_size;
-            int yoffset = (py + 0.5) * this->pixel_size;
-
-            int world_x = this->half_width - xoffset;
-            int world_y = this->half_height - yoffset;
-
-            Tuple pixel = this->transform.inverse() * Point(world_x, world_y, -1);
-            Tuple origin = this->transform.inverse() * Point(0,0,0);
-            Tuple direction = (pixel - origin).normalize();
-            
-            return Ray(to_point(origin), to_vector(direction));
         }
         Canvas render(World world)
         {
