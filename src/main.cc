@@ -95,6 +95,10 @@ class Tuple {
         {
             return (x == other.x && y == other.y && z == other.z && w == other.w);
         }
+        bool operator !=(const Tuple &other)
+        {
+            return (x != other.x || y != other.y || z != other.z || w != other.w);
+        }
         bool operator <(const Tuple &other) const
         {
             return this->x < other.x && this->y < other.y && this->z < other.z && this->w < other.w;
@@ -803,17 +807,12 @@ class Sphere: public Hitable
             }
 };
 
-class PointLight
+class Light
 {
-    private:
+    protected:
         Point position;
         Color intensity;
     public:
-        PointLight(Point position, Color intensity)
-        {
-            this->position = position;
-            this->intensity = intensity;
-        }
         Point getPosition()
         {
             return this->position;
@@ -824,7 +823,56 @@ class PointLight
         }
 };
 
-Color lighting(Material material, PointLight light, Point point, Vector eyev, Vector normalv)
+class PointLight: public Light
+{
+
+    public:
+        PointLight(Point position, Color intensity)
+        {
+            this->position = position;
+            this->intensity = intensity;
+        }
+
+};
+
+class Computation
+{
+    private:
+        double t;
+        Object* object;
+        Point point;
+        Vector eyev;
+        Vector normalv;
+        bool inside;
+    public:
+        Computation(Intersection intersection, Ray ray)
+        {
+            this->t = intersection.getTime();
+            this->object = intersection.getObject();
+            this->point = ray.position(this->t);
+            this->eyev = to_vector(-ray.getDirection());
+            this->normalv = to_vector(this->object->normalAt(this->point));
+
+            if(this->normalv.dot(this->eyev) < 0)
+            {
+                this->inside = true;
+                this->normalv = to_vector(-this->normalv);
+            }
+            else
+            {
+                this->inside = false;
+            }
+        }
+        Point getPoint() { return this->point; }
+        Object* getObject() { return this->object; }
+        Vector getEyev() { return this->eyev; }
+        Vector getNormalv() { return this->normalv; }
+        bool isInside() { return this->inside; }
+};
+
+
+
+Color lighting(Material material, Light light, Point point, Vector eyev, Vector normalv)
 {
 
     Color effective_color = to_color(material.getColor() * light.getIntensity());
@@ -850,11 +898,31 @@ Color lighting(Material material, PointLight light, Point point, Vector eyev, Ve
         else
         {
             double factor = pow(reflect_dot_eye, material.getShininess());
-            specular = to_color(light.getIntensity() * material.getSpecular() * factor);
         }
     }
     return to_color(ambient + diffuse + specular);
 }
+
+class World
+{
+    private:
+        Light light;
+        std::vector<Object*> objects = std::vector<Object*>();
+    public:
+        World() {}
+        void addObject(Object* object)
+        {
+            this->objects.push_back(object);
+        }
+        void setLight(Light light)
+        {
+            this->light = light;
+        }
+        Color shadeHit(Computation comps)
+        {
+            return lighting(comps.getObject()->getMaterial(), this->light, comps.getPoint(), comps.getEyev(), comps.getNormalv());
+        }
+};
 
 Projectile tick(Environment env, Projectile proj)
 {
@@ -932,10 +1000,9 @@ void chapter6()
     Sphere shape = Sphere();
     Material material = Material();
     material.setColor(Color(1, 0.2, 1));
-
     shape.setMaterial(material);
 
-    Point light_position = Point(-10,10,-10);
+    Point light_position = Point(-10, 10,-10);
     Color light_color = Color(1,1,1);
     PointLight light = PointLight(light_position, light_color);
 
