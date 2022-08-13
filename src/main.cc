@@ -1,10 +1,10 @@
+#include <cassert> 
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <cmath>      
 #include <vector>      
 #include <queue>
-#include <assert.h>      
 #include <optional>
 const double EPSILON = 0.00001;
 bool equal(double a, double b)
@@ -42,7 +42,7 @@ class Tuple {
             return w;
         }
         double &operator[](int index){
-            assert(index >= 0 && <= 4);
+            assert(index >= 0 && index <= 4);
             switch(index){
                 case 0:
                     return x;
@@ -475,7 +475,7 @@ class Matrix
             return m[index];
         }
         Matrix operator *(Matrix &other){
-            assert((other.rows != this.rows || other.cols != this.cols || other.rows != this.rows || other.cols != this.cols) && "rows and colums do not match");
+            assert((other.rows == this->rows || other.cols == this->cols) && "rows and colums do not match");
             Matrix result = Matrix(rows, cols);
             for(int row = 0; row < rows; row ++){
                 for(int col = 0; col < cols; col ++){
@@ -487,7 +487,7 @@ class Matrix
             return result;
         }
         Tuple operator *(Tuple other){
-            assert(rows == 4 && "rows has to be eq to 4");
+            assert(this->rows == 4 && "rows has to be eq to 4");
             Tuple result = Tuple(0,0,0,0);
             for(int row = 0; row < rows; row ++){
                 for(int col = 0; col < cols; col++){
@@ -841,7 +841,7 @@ Color lighting(Material material, PointLight light, Point point, Vector eyev, Ve
     else
     {
         diffuse = to_color(effective_color * material.getDiffuse() * light_dot_normal);
-        Vector reflectv = to_vector((lightv * -1)).reflect(normalv);
+        Vector reflectv = to_vector(-lightv).reflect(normalv);
         double reflect_dot_eye = reflectv.dot(eyev);
         if(reflect_dot_eye <= 0)
         {
@@ -932,14 +932,16 @@ void chapter6()
     Sphere shape = Sphere();
     Material material = Material();
     material.setColor(Color(1, 0.2, 1));
+
     shape.setMaterial(material);
+
     Point light_position = Point(-10,10,-10);
     Color light_color = Color(1,1,1);
     PointLight light = PointLight(light_position, light_color);
 
     double wallZ = 10;
     double wallSize = 7;
-    int canvasPixels = 500;
+    int canvasPixels = 100;
     double pixelSize = wallSize / canvasPixels;
     double half = wallSize / 2;
     Canvas c = Canvas(canvasPixels,canvasPixels);
@@ -961,7 +963,7 @@ void chapter6()
                     Intersection hit = m_intersection.value();
                     Point point = r.position(hit.getTime());
                     Vector normal = to_vector(hit.getObject()->normalAt(point));
-                    Vector eye = to_vector(r.getDirection() * -1);
+                    Vector eye = to_vector(-r.getDirection());
                     Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
                     c.writePixel(x,y,color);
                 }
@@ -992,9 +994,15 @@ int main(int argc, char * argv[])
     std::cout << r.toString() << std::endl;
 
     Sphere s = Sphere();
-    s.setTransformation(Matrix::translation(0,1,0));
-    Vector na = s.normalAt(Point(0, 1.70711, -0.70711));
-    std::cout << na.toString() << std::endl;
+    Vector n1 = s.normalAt(Point(0, 0.70711, -0.70711));
+    std::cout << n1.toString() << std::endl;
+
+    Sphere s2 = Sphere();
+    Matrix m2 = Matrix::scaling(1,0.5,1).rotate_z(M_PI / 5);
+    s2.setTransformation(m2);
+    Vector n2 = s2.normalAt(Point(0, sqrt(2)/2, -sqrt(2)/2));
+    std::cout << n2.toString() << std::endl;
 
     return 0;
 }
+
