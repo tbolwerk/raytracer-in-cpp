@@ -1041,6 +1041,10 @@ class Camera
 
             return image;
         }
+        void setTransform(Matrix transform)
+        {
+            this->transform = transform;
+        }
 };
 
 void chapter1(){
@@ -1059,7 +1063,7 @@ void chapter1(){
         c.writePixel(p.getPosition().getX(), c.getHeight() - p.getPosition().getY(), Color(1,1,1));
         p = tick(e, p);
     }
-    c.toPPM("projectile.ppm");
+    c.toPPM("chapter1.ppm");
 }
 
 void chapter4(){
@@ -1073,7 +1077,7 @@ void chapter4(){
         Tuple p = r * twelve;
         c.writePixel(p.getX(),  p.getZ(), Color(1,1,1));
     }
-    c.toPPM("clock.ppm");
+    c.toPPM("chapter4.ppm");
 }
 
 void chapter5(){
@@ -1104,7 +1108,7 @@ void chapter5(){
             }
         }
     }
-    c.toPPM("red_circle.ppm");
+    c.toPPM("chapter5.ppm");
 }
 
 void chapter6()
@@ -1149,7 +1153,64 @@ void chapter6()
             }
         }
     }
-    c.toPPM("purple_3d_circle.ppm");
+    c.toPPM("chapter6.ppm");
+}
+
+void chapter7()
+{
+    Sphere floor = Sphere();
+    floor.setTransformation(Matrix::scaling(10, 0.01, 10));
+    Material floor_material = Material();
+    floor_material.setColor(Color(1,0.9,0.9));
+    floor_material.setSpecular(0);
+    floor.setMaterial(floor_material);
+
+    Sphere left_wall = Sphere();
+    left_wall.setTransformation(Matrix::translation(0,0,5).rotate_y(-M_PI/4).rotate_x(M_PI/2).scale(10,0.01,10));
+    left_wall.setMaterial(Material());
+
+    Sphere right_wall = Sphere();
+    right_wall.setTransformation(Matrix::translation(0,0,5).rotate_y(M_PI/4).rotate_x(M_PI/2).scale(10,0.01,10));
+    right_wall.setMaterial(Material());
+
+    Sphere middle = Sphere();
+    Material middle_material = Material();
+    middle_material.setColor(Color(0.1,1,0.5));
+    middle_material.setDiffuse(0.7);
+    middle_material.setSpecular(0.3);
+    middle.setMaterial(middle_material);
+    middle.setTransformation(Matrix::translation(-0.5,1,0.5));
+
+    Sphere right = Sphere();
+    right.setTransformation(Matrix::translation(1.5,0.5,-0.5).scale(0.5,0.5,0.5));
+    Material right_material = Material();
+    right_material.setColor(Color(0.5,1,0.1));
+    right_material.setDiffuse(0.7);
+    right_material.setSpecular(0.3);
+    right.setMaterial(right_material);
+
+    Sphere left = Sphere();
+    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75).scale(0.33,0.33,0.33));
+    Material left_material = Material();
+    left_material.setColor(Color(1,0.8,0.1));
+    left_material.setDiffuse(0.7);
+    left_material.setSpecular(0.3);
+    left.setMaterial(left_material);
+
+    World world = World();
+    world.setLight(PointLight(Point(-10,10,-10), Color(1,1,1)));
+    world.addObject(&floor);
+    world.addObject(&left_wall);
+    world.addObject(&right_wall);
+    world.addObject(&middle);
+    world.addObject(&left);
+    world.addObject(&right);
+
+    Camera camera = Camera(100,50,M_PI /3);
+    camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
+
+    Canvas canvas = camera.render(world);
+    canvas.toPPM("chapter7.ppm");
 }
 
 int main(int argc, char * argv[])
@@ -1158,6 +1219,7 @@ int main(int argc, char * argv[])
     chapter4();
     chapter5();
     chapter6();
+    chapter7();
 
     Material m = Material();
     Point position = Point(0,0,0);
