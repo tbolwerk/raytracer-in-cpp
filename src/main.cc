@@ -948,13 +948,11 @@ class World
         Color colorAt(Ray ray)
         {
             Intersections xs = intersectWorld(ray);
-            while(!xs.empty()){
-                std::optional<Intersection> m_intersection = xs.hit();
-                if(m_intersection.has_value()){
-                    Intersection hit = m_intersection.value();
-                    Computation comps = Computation(hit, ray);
-                    return shadeHit(comps);
-                }
+            std::optional<Intersection> m_intersection = xs.hit();
+            if(m_intersection.has_value()){
+                Intersection hit = m_intersection.value();
+                Computation comps = Computation(hit, ray);
+                return shadeHit(comps);
             }
             return Color::black();
         }
@@ -1100,11 +1098,9 @@ void chapter5(){
 
             Ray r = Ray(rayOrigin, to_vector((position - rayOrigin).normalize()));
             Intersections xs = Intersections(shape.intersect(r));
-            while(!xs.empty()){
-                std::optional<Intersection> m_intersection = xs.hit();
-                if(m_intersection.has_value()){
-                    c.writePixel(x,y,red);
-                }
+            std::optional<Intersection> m_intersection = xs.hit();
+            if(m_intersection.has_value()){
+                c.writePixel(x,y,red);
             }
         }
     }
@@ -1140,16 +1136,14 @@ void chapter6()
             Ray r = Ray(rayOrigin, to_vector((position - rayOrigin).normalize()));
        
             Intersections xs = Intersections(shape.intersect(r));
-            while(!xs.empty()){
-                std::optional<Intersection> m_intersection = xs.hit();
-                if(m_intersection.has_value()){
-                    Intersection hit = m_intersection.value();
-                    Point point = r.position(hit.getTime());
-                    Vector normal = to_vector(hit.getObject()->normalAt(point));
-                    Vector eye = to_vector(-r.getDirection());
-                    Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
-                    c.writePixel(x,y,color);
-                }
+            std::optional<Intersection> m_intersection = xs.hit();
+            if(m_intersection.has_value()){
+                Intersection hit = m_intersection.value();
+                Point point = r.position(hit.getTime());
+                Vector normal = to_vector(hit.getObject()->normalAt(point));
+                Vector eye = to_vector(-r.getDirection());
+                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
+                c.writePixel(x,y,color);
             }
         }
     }
@@ -1182,20 +1176,20 @@ void chapter7()
     middle.setTransformation(Matrix::translation(-0.5,1,0.5));
 
     Sphere right = Sphere();
-    right.setTransformation(Matrix::translation(1.5,0.5,-0.5).scale(0.5,0.5,0.5));
     Material right_material = Material();
     right_material.setColor(Color(0.5,1,0.1));
     right_material.setDiffuse(0.7);
     right_material.setSpecular(0.3);
     right.setMaterial(right_material);
+    right.setTransformation(Matrix::translation(1.5,0.5,-0.5).scale(0.5,0.5,0.5));
 
     Sphere left = Sphere();
-    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75).scale(0.33,0.33,0.33));
     Material left_material = Material();
     left_material.setColor(Color(1,0.8,0.1));
     left_material.setDiffuse(0.7);
     left_material.setSpecular(0.3);
     left.setMaterial(left_material);
+    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75).scale(0.33,0.33,0.33));
 
     World world = World();
     world.setLight(PointLight(Point(-10,10,-10), Color(1,1,1)));
