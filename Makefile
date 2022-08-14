@@ -7,7 +7,6 @@ build:
 clean:
 	rm -rf build
 debug:
-	c++ src/main.cc -o raytracer -std=c++17
+	c++ src/main.cc -g -o raytracer -std=c++17
 	./raytracer
-	rm -rf debug
 	

@@ -11,6 +11,11 @@ bool equal(double a, double b)
 {
     return abs(a - b) < EPSILON;
 }
+double radians(double degree)
+{
+    return (degree / 180) * M_PI;
+}
+
 class Tuple {
     protected:
         double x;
@@ -256,6 +261,8 @@ class Canvas
         }
         void writePixel(int x, int y, Color color)
         {
+            assert(x >= 0 && x < width && "x not within bounds");
+            assert(y >= 0 && y < height && "y not within bounds");
             canvas[x][y] = color;
         }
         Color pixelAt(int x, int y)
@@ -349,23 +356,28 @@ class Matrix
         }
         Matrix rotate_x(double r){
             Matrix result = this->copy();
-            return Matrix::rotation_x(r) * result;
+            return result * Matrix::rotation_x(r);
         }
         Matrix rotate_y(double r){
             Matrix result = this->copy();
-            return Matrix::rotation_y(r) * result;
+            return result * Matrix::rotation_y(r);
         }
         Matrix rotate_z(double r){
             Matrix result = this->copy();
-            return Matrix::rotation_z(r) * result;
+            return result * Matrix::rotation_z(r);
         }
         Matrix scale(double x,double y, double z){
             Matrix result = this->copy();
-            return Matrix::scaling(x,y,z) * result;
+            return result * Matrix::scaling(x,y,z);
         }
         Matrix translate(double x, double y, double z){
             Matrix result = this->copy();
-            return Matrix::translation(x,y,z) * result;
+            return result * Matrix::translation(x,y,z);
+        }
+        Matrix shear(double x_y, double x_z, double y_x, double y_z, double z_x, double z_y)
+        {
+            Matrix result = this->copy();
+            return result * Matrix::shearing(x_y, x_z, y_x, y_z, z_x, z_y);
         }
         static Matrix shearing(double x_y, double x_z, double y_x, double y_z, double z_x, double z_y){
             double arr[16] = {1,x_y,x_z,0,
@@ -416,7 +428,7 @@ class Matrix
             for(int i = 0; i < rows; i ++){
                 for(int j = 0; j < cols; j ++){
                     double c = cofactor(i,j);
-                    m2[i][j] = c / det;
+                    m2[j][i] = c / det;
                 }
             }
             return m2;
@@ -478,7 +490,7 @@ class Matrix
         double* &operator[](int index){
             return m[index];
         }
-        Matrix operator *(Matrix &other){
+        Matrix operator *(Matrix other){
             assert((other.rows == this->rows || other.cols == this->cols) && "rows and colums do not match");
             Matrix result = Matrix(rows, cols);
             for(int row = 0; row < rows; row ++){
@@ -937,6 +949,15 @@ class World
         }
     public:
         World() {}
+        World(std::vector<Object*> objects) { this->objects = objects; }
+        static World defaultWorld()
+        {
+            World default_world = World();
+            Light light = PointLight(Point(-10,10,-10), Color(1,1,1));
+            default_world.setLight(light);
+
+            return default_world;
+        }
         void addObject(Object* object)
         {
             this->objects.push_back(object);
@@ -963,7 +984,7 @@ Matrix view_transform(Point from, Point to, Vector up)
     Vector forward = to_vector((to - from).normalize());
     Vector upn = to_vector(up.normalize());
     Vector left = to_vector(forward.cross(upn));
-    Tuple true_up = left.cross(forward);
+    Vector true_up = left.cross(forward);
     double arr[16] = {left.getX(), left.getY(), left.getZ(), 0,
                       true_up.getX(), true_up.getY(), true_up.getZ(), 0,
                       -forward.getX(), -forward.getY(), -forward.getZ(), 0,
@@ -987,30 +1008,17 @@ class Camera
         double field_of_view;
         Matrix transform = Matrix(4,4).identity();
         double pixel_size;
-        int half_width;
-        int half_height;
-        Ray rayForPixel(int px, int py)
-        {
-            int xoffset = (px + 0.5) * this->pixel_size;
-            int yoffset = (py + 0.5) * this->pixel_size;
-
-            int world_x = this->half_width - xoffset;
-            int world_y = this->half_height - yoffset;
-
-            Tuple pixel = this->transform.inverse() * Point(world_x, world_y, -1);
-            Tuple origin = this->transform.inverse() * Point(0,0,0);
-            Tuple direction = (pixel - origin).normalize();
-            
-            return Ray(to_point(origin), to_vector(direction));
-        }
+        double half_width;
+        double half_height;
+       
     public:
         Camera(int hsize, int vsize, double field_of_view) {
             this->hsize = hsize;
             this->vsize = vsize;
             this->field_of_view = field_of_view;
 
-            int half_view = tan(this->field_of_view / 2);
-            int aspect = this->hsize / this->vsize;
+            double half_view = tan(this->field_of_view / 2);
+            double aspect = this->hsize / this->vsize;
             if(aspect >= 1)
             {
                 this->half_width = half_view;
@@ -1022,6 +1030,20 @@ class Camera
                 this->half_height = half_view;
             }
             this->pixel_size =  (this->half_width * 2) / this->hsize;
+        }
+        Ray rayForPixel(int px, int py)
+        {
+            double xoffset = (px + 0.5) * this->pixel_size;
+            double yoffset = (py + 0.5) * this->pixel_size;
+
+            double world_x = this->half_width - xoffset;
+            double world_y = this->half_height - yoffset;
+
+            Tuple pixel = this->transform.inverse() * Point(world_x, world_y, -1);
+            Tuple origin = this->transform.inverse() * Point(0,0,0);
+            Tuple direction = (pixel - origin).normalize();
+            
+            return Ray(to_point(origin), to_vector(direction));
         }
         Canvas render(World world)
         {
@@ -1043,6 +1065,7 @@ class Camera
         {
             this->transform = transform;
         }
+        double getPixelSize(){return this->pixel_size;}
 };
 
 void chapter1(){
@@ -1069,9 +1092,8 @@ void chapter4(){
     Tuple origin = Point(0,0,0);
     Canvas c = Canvas(400, 400);
     Tuple twelve = t * origin;
-    for(int i = 0; i < 12; i ++){
-        Matrix r = Matrix(4,4).identity().rotate_y(i * (M_PI / 6)).scale(150,150,150).translate(200,200,200);
-        
+    for(int degree = 0; degree < 360; degree += 30){
+        Matrix r = Matrix::translation(200,200,200).scale(150,150,150).rotate_y(radians(degree));
         Tuple p = r * twelve;
         c.writePixel(p.getX(),  p.getZ(), Color(1,1,1));
     }
@@ -1150,6 +1172,138 @@ void chapter6()
     c.toPPM("chapter6.ppm");
 }
 
+void chapter6_1()
+{
+    Sphere shape = Sphere();
+    Material material = Material();
+    material.setColor(Color(1, 0.2, 1));
+    shape.setMaterial(material);
+    shape.setTransformation(Matrix::scaling(0.5,0.5,0.5));
+
+    Point light_position = Point(-10, 10,-10);
+    Color light_color = Color(1,1,1);
+    PointLight light = PointLight(light_position, light_color);
+
+    double wallZ = 10;
+    double wallSize = 7;
+    int canvasPixels = 100;
+    double pixelSize = wallSize / canvasPixels;
+    double half = wallSize / 2;
+    Canvas c = Canvas(canvasPixels,canvasPixels);
+    Point rayOrigin = Point(0,0,-5);
+    for(int y = 0; y < canvasPixels - 1; y ++)
+    {
+        double world_y = half - pixelSize * y;
+        for(int x = 0; x < canvasPixels - 1; x ++)
+        {
+            double world_x = -half + pixelSize * x;
+            Point position = Point(world_x,world_y,wallZ);
+
+            Ray r = Ray(rayOrigin, to_vector((position - rayOrigin).normalize()));
+       
+            Intersections xs = Intersections(shape.intersect(r));
+            std::optional<Intersection> m_intersection = xs.hit();
+            if(m_intersection.has_value()){
+                Intersection hit = m_intersection.value();
+                Point point = r.position(hit.getTime());
+                Vector normal = to_vector(hit.getObject()->normalAt(point));
+                Vector eye = to_vector(-r.getDirection());
+                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
+                c.writePixel(x,y,color);
+            }
+        }
+    }
+    c.toPPM("chapter6_1.ppm");
+}
+
+void chapter6_2()
+{
+    Sphere shape = Sphere();
+    Material material = Material();
+    material.setColor(Color(1, 0.2, 1));
+    shape.setMaterial(material);
+    shape.setTransformation(Matrix::scaling(0.5,1,1) * Matrix::shearing(1,0,0,0,0,0));
+
+    Point light_position = Point(-10, 10,-10);
+    Color light_color = Color(1,1,1);
+    PointLight light = PointLight(light_position, light_color);
+
+    double wallZ = 10;
+    double wallSize = 7;
+    int canvasPixels = 100;
+    double pixelSize = wallSize / canvasPixels;
+    double half = wallSize / 2;
+    Canvas c = Canvas(canvasPixels,canvasPixels);
+    Point rayOrigin = Point(0,0,-5);
+    for(int y = 0; y < canvasPixels - 1; y ++)
+    {
+        double world_y = half - pixelSize * y;
+        for(int x = 0; x < canvasPixels - 1; x ++)
+        {
+            double world_x = -half + pixelSize * x;
+            Point position = Point(world_x,world_y,wallZ);
+
+            Ray r = Ray(rayOrigin, to_vector((position - rayOrigin).normalize()));
+       
+            Intersections xs = Intersections(shape.intersect(r));
+            std::optional<Intersection> m_intersection = xs.hit();
+            if(m_intersection.has_value()){
+                Intersection hit = m_intersection.value();
+                Point point = r.position(hit.getTime());
+                Vector normal = to_vector(hit.getObject()->normalAt(point));
+                Vector eye = to_vector(-r.getDirection());
+                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
+                c.writePixel(x,y,color);
+            }
+        }
+    }
+    c.toPPM("chapter6_2.ppm");
+}
+
+void chapter6_3()
+{
+    Sphere shape = Sphere();
+    Material material = Material();
+    material.setColor(Color(1, 0.2, 1));
+    shape.setMaterial(material);
+    shape.setTransformation(Matrix::rotation_z(radians(90)).scale(1,0.5,0.5));
+
+    Point light_position = Point(-10, 10,-10);
+    Color light_color = Color(1,1,1);
+    PointLight light = PointLight(light_position, light_color);
+
+    double wallZ = 10;
+    double wallSize = 7;
+    int canvasPixels = 100;
+    double pixelSize = wallSize / canvasPixels;
+    double half = wallSize / 2;
+    Canvas c = Canvas(canvasPixels,canvasPixels);
+    Point rayOrigin = Point(0,0,-5);
+    for(int y = 0; y < canvasPixels - 1; y ++)
+    {
+        double world_y = half - pixelSize * y;
+        for(int x = 0; x < canvasPixels - 1; x ++)
+        {
+            double world_x = -half + pixelSize * x;
+            Point position = Point(world_x,world_y,wallZ);
+
+            Ray r = Ray(rayOrigin, to_vector((position - rayOrigin).normalize()));
+       
+            Intersections xs = Intersections(shape.intersect(r));
+            std::optional<Intersection> m_intersection = xs.hit();
+            if(m_intersection.has_value()){
+                Intersection hit = m_intersection.value();
+                Point point = r.position(hit.getTime());
+                Vector normal = to_vector(hit.getObject()->normalAt(point));
+                Vector eye = to_vector(-r.getDirection());
+                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
+                c.writePixel(x,y,color);
+            }
+        }
+    }
+    c.toPPM("chapter6_3.ppm");
+}
+
 void chapter7()
 {
     Sphere floor = Sphere();
@@ -1160,11 +1314,11 @@ void chapter7()
     floor.setMaterial(floor_material);
 
     Sphere left_wall = Sphere();
-    left_wall.setTransformation(Matrix::translation(0,0,5).rotate_y(-M_PI/4).rotate_x(M_PI/2).scale(10,0.01,10));
+    left_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(-M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
     left_wall.setMaterial(Material());
 
     Sphere right_wall = Sphere();
-    right_wall.setTransformation(Matrix::translation(0,0,5).rotate_y(M_PI/4).rotate_x(M_PI/2).scale(10,0.01,10));
+    right_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
     right_wall.setMaterial(Material());
 
     Sphere middle = Sphere();
@@ -1181,7 +1335,7 @@ void chapter7()
     right_material.setDiffuse(0.7);
     right_material.setSpecular(0.3);
     right.setMaterial(right_material);
-    right.setTransformation(Matrix::translation(1.5,0.5,-0.5).scale(0.5,0.5,0.5));
+    right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
 
     Sphere left = Sphere();
     Material left_material = Material();
@@ -1189,22 +1343,39 @@ void chapter7()
     left_material.setDiffuse(0.7);
     left_material.setSpecular(0.3);
     left.setMaterial(left_material);
-    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75).scale(0.33,0.33,0.33));
+    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
 
     World world = World();
     world.setLight(PointLight(Point(-10,10,-10), Color(1,1,1)));
-    world.addObject(&floor);
-    world.addObject(&left_wall);
-    world.addObject(&right_wall);
     world.addObject(&middle);
     world.addObject(&left);
     world.addObject(&right);
-
+    world.addObject(&left_wall);
+    world.addObject(&right_wall);
+    world.addObject(&floor);
+  
     Camera camera = Camera(100,50,M_PI /3);
     camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
 
     Canvas canvas = camera.render(world);
     canvas.toPPM("chapter7.ppm");
+}
+
+void multiplying_a_product_by_its_inverse()
+{
+    double arr1[16] = {3,-9, 7,3,
+                       3,-8, 2,-9,
+                      -4,4,4,1,
+                      -6,5,-1,1 };
+    double arr2[16] = {8,2,2,2,
+                       3,-1,7,0,
+                       7,0,5,4,
+                       6,-2,0,5};
+    Matrix a = Matrix(4,4,arr1);
+    Matrix b = Matrix(4,4,arr2);
+    Matrix c = a * b;
+    Matrix _a = c * b.inverse();
+    assert(a.toString() == _a.toString() && "c = a * b == c * inverse(b) = a");
 }
 
 int main(int argc, char * argv[])
@@ -1213,30 +1384,53 @@ int main(int argc, char * argv[])
     chapter4();
     chapter5();
     chapter6();
+    chapter6_1();
+    chapter6_2();
+    chapter6_3();
     chapter7();
 
-    Material m = Material();
-    Point position = Point(0,0,0);
-    Vector eyev = Vector(0,0,-1);
-    Vector normalv = Vector(0,0,-1);
-    PointLight light = PointLight(Point(0,10,-10), Color(1,1,1));
-    Color result = lighting(m,light, position, eyev, normalv);
-    std::cout << to_vector(result).toString() << std::endl;
+    // Point from = Point(1,3,2);
+    // Point to = Point(4,-2,8);
+    // Vector up = Vector(1,1,0);
 
-    Vector v = Vector(1,-1,0);
-    Vector n = Vector(0,1,0);
-    Vector r = v.reflect(n);
-    std::cout << r.toString() << std::endl;
+    // Matrix t = view_transform(from,to,up);
+    // std::cout << t.toString() << std::endl;
 
-    Sphere s = Sphere();
-    Vector n1 = s.normalAt(Point(0, 0.70711, -0.70711));
-    std::cout << n1.toString() << std::endl;
+    // Point from2 = Point(0,0,0);
+    // Point to2 = Point(0,0,-1);
+    // Vector up2 = Vector(0,1,0);
 
+    // Matrix t2 = view_transform(from2,to2,up2);
+    // std::cout << t2.toString() << std::endl;
+
+    World world = World::defaultWorld();
+    Sphere s1 = Sphere();
+    Material m1 = Material();
+    m1.setColor(Color(0.8,0.1,0.6));
+    m1.setDiffuse(0.7);
+    m1.setSpecular(0.2);
+    s1.setMaterial(m1);
     Sphere s2 = Sphere();
-    Matrix m2 = Matrix::scaling(1,0.5,1).rotate_z(M_PI / 5);
-    s2.setTransformation(m2);
-    Vector n2 = s2.normalAt(Point(0, sqrt(2)/2, -sqrt(2)/2));
-    std::cout << n2.toString() << std::endl;
+    s2.setTransformation(Matrix::scaling(0.5,0.5,0.5));
+
+    world.addObject(&s1);
+    world.addObject(&s2);
+
+    Camera camera = Camera(11,11,M_PI/2);
+    Point from = Point(0,0,-5);
+    Point to = Point(0,0,0);
+    Vector up = Vector(0,1,0);
+
+    camera.setTransform(view_transform(from,to,up));
+    Canvas image = camera.render(world);
+    Tuple color = (Tuple) image.pixelAt(5,5);
+
+    std::cout << color.toString() << std::endl;
+
+    Camera camera2 = Camera(201,101,M_PI /2);
+    Ray r2 = camera2.rayForPixel(0,0);
+    std::cout << "origin: " << r2.getOrigin().toString() << std::endl;
+    std::cout << "direction: " << r2.getDirection().toString() << std::endl;
 
     return 0;
 }
