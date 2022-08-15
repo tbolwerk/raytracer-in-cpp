@@ -677,8 +677,13 @@ class Object
         Matrix transformation = Matrix(4,4).identity();
         Material material;
     public:
-        virtual Vector normalAt(Point p) = 0;
-        
+        virtual Vector localNormalAt(Point world_point) = 0;
+        Vector normalAt(Point point){
+            Tuple local_point = this->transformation.inverse() * point;
+            Tuple local_normal = this->localNormalAt(to_point(local_point));
+            Vector world_normal = to_vector(this->transformation.inverse().transpose() * local_normal);
+            return world_normal.normalize();
+        }
         std::string toString()
         {
             return "Object {" + id + " ," + "Position " + position.toString() + "}";
@@ -781,7 +786,12 @@ class Intersections
 class Hitable: public Object
 {
     public:
-        virtual std::vector<Intersection> intersect(Ray ray) = 0; 
+        std::vector<Intersection> intersect(Ray ray)
+        {
+            Ray local_ray = ray.transform(this->getTransformation().inverse());
+            return this->localIntersect(local_ray);
+        }
+        virtual std::vector<Intersection> localIntersect(Ray local_ray) = 0;
 };
 
 class Sphere: public Hitable
@@ -804,12 +814,11 @@ class Sphere: public Hitable
             this->radius = radius;
         }
         public:
-            std::vector<Intersection> intersect(Ray ray)
+            std::vector<Intersection> localIntersect(Ray local_ray)
             {
-                Ray localRay = ray.transform(transformation.inverse());
-                Tuple object_to_ray = localRay.getOrigin() - this->position;
-                double a = localRay.getDirection().dot(localRay.getDirection());
-                double b = 2 * localRay.getDirection().dot(object_to_ray);
+                Tuple object_to_ray = local_ray.getOrigin() - this->position;
+                double a = local_ray.getDirection().dot(local_ray.getDirection());
+                double b = 2 * local_ray.getDirection().dot(object_to_ray);
                 double c = object_to_ray.dot(object_to_ray) - this->radius; //TODO: this->radius might be replaced with just 1
 
                 double discriminant = pow(b,2) - 4 * a * c;
@@ -825,12 +834,39 @@ class Sphere: public Hitable
                 v.push_back(Intersection(t2, this));
                 return v;
             }
-            Vector normalAt(Point world_point){
-                Tuple object_point = this->transformation.inverse() * world_point;
-                Tuple object_normal = object_point - this->position;
-                Vector world_normal = to_vector(this->transformation.inverse().transpose() * object_normal);
-                return world_normal.normalize();
+            Vector localNormalAt(Point world_point){
+                return Vector(world_point.getX(), world_point.getY(), world_point.getZ());
             }
+};
+
+class Plane: public Hitable
+{
+    public:
+        Plane()
+        {
+            this->id = "unit_plane";
+            this->position = Point(0,0,0);
+            this->material = Material();
+            this->material.setAmbient(1);
+        }
+        std::vector<Intersection> localIntersect(Ray local_ray)
+        {
+            std::vector<Intersection> v = std::vector<Intersection>();
+            if(abs(local_ray.getDirection().getY()) < EPSILON)
+            {
+                return v;
+            }
+            else
+            {
+                double t = -local_ray.getOrigin().getY() / local_ray.getDirection().getY();
+                v.push_back(Intersection(t, this));
+            }
+            return v;
+        }
+        Vector localNormalAt(Point world_point)
+        {
+            return Vector(0,1,0);
+        }
 };
 
 class Light
@@ -938,23 +974,7 @@ class World
     private:
         Light light;
         std::vector<Object*> objects = std::vector<Object*>();
-        bool isShadowed(Point point)
-        {
-            bool is_shadowed = false;
-            Tuple v = this->light.getPosition() - point;
-            double distance = v.magnitude();
-            Tuple direction = v.normalize();
-
-            Ray r = Ray(point, to_vector(direction));
-            Intersections intersections = this->intersectWorld(r);
-            
-            std::optional<Intersection> h = intersections.hit();
-            if(h.has_value() && h.value().getTime() < distance)
-            {
-                is_shadowed = true;
-            }
-            return is_shadowed;
-        }
+       
         Color shadeHit(Computation comps)
         {
             bool shadowed = this->isShadowed(comps.getOverPoint());
@@ -1002,7 +1022,23 @@ class World
             }
             return Color::black();
         }
-    
+        bool isShadowed(Point point)
+        {
+            bool is_shadowed = false;
+            Tuple v = this->light.getPosition() - point;
+            double distance = v.magnitude();
+            Tuple direction = v.normalize();
+
+            Ray r = Ray(point, to_vector(direction));
+            Intersections intersections = this->intersectWorld(r);
+            
+            std::optional<Intersection> h = intersections.hit();
+            if(h.has_value() && h.value().getTime() < distance)
+            {
+                is_shadowed = true;
+            }
+            return is_shadowed;
+        }
 };
 
 Matrix view_transform(Point from, Point to, Vector up)
@@ -1387,6 +1423,53 @@ void chapter7()
     canvas.toPPM("chapter7.ppm");
 }
 
+void chapter9()
+{
+    Plane floor = Plane();
+    floor.setTransformation(Matrix::scaling(10, 0.01, 10));
+    Material floor_material = Material();
+    floor_material.setColor(Color(1,0.9,0.9));
+    floor_material.setSpecular(0);
+    floor.setMaterial(floor_material);
+
+    Sphere middle = Sphere();
+    Material middle_material = Material();
+    middle_material.setColor(Color(0.1,1,0.5));
+    middle_material.setDiffuse(0.7);
+    middle_material.setSpecular(0.3);
+    middle.setMaterial(middle_material);
+    middle.setTransformation(Matrix::translation(-0.5,1,0.5));
+
+    Sphere right = Sphere();
+    Material right_material = Material();
+    right_material.setColor(Color(0.5,1,0.1));
+    right_material.setDiffuse(0.7);
+    right_material.setSpecular(0.3);
+    right.setMaterial(right_material);
+    right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
+
+    Sphere left = Sphere();
+    Material left_material = Material();
+    left_material.setColor(Color(1,0.8,0.1));
+    left_material.setDiffuse(0.7);
+    left_material.setSpecular(0.3);
+    left.setMaterial(left_material);
+    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
+
+    World world = World();
+    world.setLight(PointLight(Point(-10,10,-10), Color(1,1,1)));
+    world.addObject(&middle);
+    world.addObject(&left);
+    world.addObject(&right);
+    world.addObject(&floor);
+  
+    Camera camera = Camera(100,50,M_PI /3);
+    camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
+
+    Canvas canvas = camera.render(world);
+    canvas.toPPM("chapter9.ppm");
+}
+
 void multiplying_a_product_by_its_inverse()
 {
     double arr1[16] = {3,-9, 7,3,
@@ -1403,39 +1486,39 @@ void multiplying_a_product_by_its_inverse()
     Matrix _a = c * b.inverse();
     assert(a.toString() == _a.toString() && "c = a * b == c * inverse(b) = a");
 }
-// void shadow_is_hit(){
-//     Sphere s1 = Sphere();
-//     Material m1 = Material();
-//     m1.setColor(Color(0.8,0.1,0.6));
-//     m1.setDiffuse(0.7);
-//     m1.setSpecular(0.2);
-//     s1.setMaterial(m1);
-//     Sphere s2 = Sphere();
-//     s2.setTransformation(Matrix::scaling(0.5,0.5,0.5));
+void shadow_is_hit(){
+    Sphere s1 = Sphere();
+    Material m1 = Material();
+    m1.setColor(Color(0.8,0.1,0.6));
+    m1.setDiffuse(0.7);
+    m1.setSpecular(0.2);
+    s1.setMaterial(m1);
+    Sphere s2 = Sphere();
+    s2.setTransformation(Matrix::scaling(0.5,0.5,0.5));
 
-//     std::vector<Object*> objects = std::vector<Object*>();
-//     objects.push_back(&s1);
-//     objects.push_back(&s2);
-//     World w = World::defaultWorld(objects);
-//     bool b = w.isShadowed(Point(0,10,0));
-//     assert(b == false && "No shadows");
-//     bool b2 = w.isShadowed(Point(10,-10,10));
-//     assert(b2 == true && "Shadows");
-// }
+    std::vector<Object*> objects = std::vector<Object*>();
+    objects.push_back(&s1);
+    objects.push_back(&s2);
+    World w = World::defaultWorld(objects);
+    bool b = w.isShadowed(Point(0,10,0));
+    assert(b == false && "No shadows");
+    bool b2 = w.isShadowed(Point(10,-10,10));
+    assert(b2 == true && "Shadows");
+}
 void feature_matrices()
 {
     multiplying_a_product_by_its_inverse();
 }
 
-// void feature_shadows()
-// {
-//     shadow_is_hit();
-// }
+void feature_shadows()
+{
+    shadow_is_hit();
+}
 
 int main(int argc, char * argv[])
 {
     feature_matrices();
-    // feature_shadows();
+    feature_shadows();
 
     chapter1();
     chapter4();
@@ -1445,6 +1528,7 @@ int main(int argc, char * argv[])
     chapter6_2();
     chapter6_3();
     chapter7();
+    chapter9();
 
     return 0;
 }

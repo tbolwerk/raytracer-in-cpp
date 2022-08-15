@@ -7,6 +7,7 @@ build:
 clean:
 	rm -rf build
 	rm *ppm
+	rm -rf raytracer.dSYM
 debug:
 	c++ src/main.cc -g -O2 -o raytracer -std=c++17
 	./raytracer
