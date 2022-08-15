@@ -678,7 +678,7 @@ class Object
         Material material;
     public:
         virtual Vector normalAt(Point p) = 0;
-
+        
         std::string toString()
         {
             return "Object {" + id + " ," + "Position " + position.toString() + "}";
@@ -751,9 +751,12 @@ class Intersections
                 this->intersections.push(i);
             }
         }
-        Intersection top()
+        std::optional<Intersection> top()
         {
-            return this->intersections.top();
+            if(!empty()){
+                return std::optional<Intersection>(this->intersections.top());
+            }
+            return std::nullopt;
         }
         bool empty()
         {
@@ -867,6 +870,7 @@ class Computation
         Vector eyev;
         Vector normalv;
         bool inside;
+        Point over_point;
     public:
         Computation(Intersection intersection, Ray ray)
         {
@@ -885,8 +889,11 @@ class Computation
             {
                 this->inside = false;
             }
+
+            this->over_point = to_point(this->point + this->normalv * EPSILON);
         }
         Point getPoint() { return this->point; }
+        Point getOverPoint() { return this->over_point; }
         Object* getObject() { return this->object; }
         Vector getEyev() { return this->eyev; }
         Vector getNormalv() { return this->normalv; }
@@ -895,7 +902,7 @@ class Computation
 
 
 
-Color lighting(Material material, Light light, Point point, Vector eyev, Vector normalv)
+Color lighting(Material material, Light light, Point point, Vector eyev, Vector normalv, bool in_shadow)
 {
 
     Color effective_color = to_color(material.getColor() * light.getIntensity());
@@ -904,7 +911,7 @@ Color lighting(Material material, Light light, Point point, Vector eyev, Vector 
     double light_dot_normal = lightv.dot(normalv);
     Color diffuse;
     Color specular;
-    if(light_dot_normal < 0)
+    if(light_dot_normal < 0 || in_shadow)
     {
         diffuse = Color::black();
         specular = Color::black();
@@ -931,9 +938,41 @@ class World
     private:
         Light light;
         std::vector<Object*> objects = std::vector<Object*>();
+        bool isShadowed(Point point)
+        {
+            std::cout << point.toString() << std::endl;
+            bool is_shadowed = false;
+            Tuple v = this->light.getPosition() - point;
+            double distance = v.magnitude();
+            Tuple direction = v.normalize();
+
+            Ray r = Ray(point, to_vector(direction));
+            Intersections intersections = this->intersectWorld(r);
+            
+            std::optional<Intersection> h = intersections.hit();
+            if(h.has_value() && h.value().getTime() < distance)
+            {
+                is_shadowed = true;
+            }
+            return is_shadowed;
+        }
         Color shadeHit(Computation comps)
         {
-            return lighting(comps.getObject()->getMaterial(), this->light, comps.getPoint(), comps.getEyev(), comps.getNormalv());
+            Point over_point = comps.getOverPoint();
+            bool is_shadowed = false; // this->isShadowed(over_point); // TODO: replace with isShadowed function, somehow this is bugged?
+            Tuple v = this->light.getPosition() - comps.getOverPoint();
+            double distance = v.magnitude();
+            Tuple direction = v.normalize();
+
+            Ray r = Ray(comps.getOverPoint(), to_vector(direction));
+            Intersections intersections = this->intersectWorld(r);
+            
+            std::optional<Intersection> h = intersections.hit();
+            if(h.has_value() && h.value().getTime() < distance)
+            {
+                is_shadowed = true;
+            }
+            return lighting(comps.getObject()->getMaterial(), this->light, over_point, comps.getEyev(), comps.getNormalv(), is_shadowed);
         }
         Intersections intersectWorld(Ray ray)
         {
@@ -949,10 +988,10 @@ class World
         }
     public:
         World() {}
-        World(std::vector<Object*> objects) { this->objects = objects; }
-        static World defaultWorld()
+        World(std::vector<Object*> objects) { this->objects = objects;}
+        static World defaultWorld(std::vector<Object*> objects)
         {
-            World default_world = World();
+            World default_world = World(objects);
             Light light = PointLight(Point(-10,10,-10), Color(1,1,1));
             default_world.setLight(light);
 
@@ -977,6 +1016,7 @@ class World
             }
             return Color::black();
         }
+    
 };
 
 Matrix view_transform(Point from, Point to, Vector up)
@@ -1164,7 +1204,7 @@ void chapter6()
                 Point point = r.position(hit.getTime());
                 Vector normal = to_vector(hit.getObject()->normalAt(point));
                 Vector eye = to_vector(-r.getDirection());
-                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
+                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal, false);
                 c.writePixel(x,y,color);
             }
         }
@@ -1208,7 +1248,7 @@ void chapter6_1()
                 Point point = r.position(hit.getTime());
                 Vector normal = to_vector(hit.getObject()->normalAt(point));
                 Vector eye = to_vector(-r.getDirection());
-                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
+                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal, false);
                 c.writePixel(x,y,color);
             }
         }
@@ -1252,7 +1292,7 @@ void chapter6_2()
                 Point point = r.position(hit.getTime());
                 Vector normal = to_vector(hit.getObject()->normalAt(point));
                 Vector eye = to_vector(-r.getDirection());
-                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
+                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal, false);
                 c.writePixel(x,y,color);
             }
         }
@@ -1296,7 +1336,7 @@ void chapter6_3()
                 Point point = r.position(hit.getTime());
                 Vector normal = to_vector(hit.getObject()->normalAt(point));
                 Vector eye = to_vector(-r.getDirection());
-                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal);
+                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal, false);
                 c.writePixel(x,y,color);
             }
         }
@@ -1377,9 +1417,40 @@ void multiplying_a_product_by_its_inverse()
     Matrix _a = c * b.inverse();
     assert(a.toString() == _a.toString() && "c = a * b == c * inverse(b) = a");
 }
+// void shadow_is_hit(){
+//     Sphere s1 = Sphere();
+//     Material m1 = Material();
+//     m1.setColor(Color(0.8,0.1,0.6));
+//     m1.setDiffuse(0.7);
+//     m1.setSpecular(0.2);
+//     s1.setMaterial(m1);
+//     Sphere s2 = Sphere();
+//     s2.setTransformation(Matrix::scaling(0.5,0.5,0.5));
+
+//     std::vector<Object*> objects = std::vector<Object*>();
+//     objects.push_back(&s1);
+//     objects.push_back(&s2);
+//     World w = World::defaultWorld(objects);
+//     bool b = w.isShadowed(Point(0,10,0));
+//     assert(b == false && "No shadows");
+//     bool b2 = w.isShadowed(Point(10,-10,10));
+//     assert(b2 == true && "Shadows");
+// }
+void feature_matrices()
+{
+    multiplying_a_product_by_its_inverse();
+}
+
+// void feature_shadows()
+// {
+//     shadow_is_hit();
+// }
 
 int main(int argc, char * argv[])
 {
+    feature_matrices();
+    // feature_shadows();
+
     chapter1();
     chapter4();
     chapter5();
@@ -1388,49 +1459,6 @@ int main(int argc, char * argv[])
     chapter6_2();
     chapter6_3();
     chapter7();
-
-    // Point from = Point(1,3,2);
-    // Point to = Point(4,-2,8);
-    // Vector up = Vector(1,1,0);
-
-    // Matrix t = view_transform(from,to,up);
-    // std::cout << t.toString() << std::endl;
-
-    // Point from2 = Point(0,0,0);
-    // Point to2 = Point(0,0,-1);
-    // Vector up2 = Vector(0,1,0);
-
-    // Matrix t2 = view_transform(from2,to2,up2);
-    // std::cout << t2.toString() << std::endl;
-
-    World world = World::defaultWorld();
-    Sphere s1 = Sphere();
-    Material m1 = Material();
-    m1.setColor(Color(0.8,0.1,0.6));
-    m1.setDiffuse(0.7);
-    m1.setSpecular(0.2);
-    s1.setMaterial(m1);
-    Sphere s2 = Sphere();
-    s2.setTransformation(Matrix::scaling(0.5,0.5,0.5));
-
-    world.addObject(&s1);
-    world.addObject(&s2);
-
-    Camera camera = Camera(11,11,M_PI/2);
-    Point from = Point(0,0,-5);
-    Point to = Point(0,0,0);
-    Vector up = Vector(0,1,0);
-
-    camera.setTransform(view_transform(from,to,up));
-    Canvas image = camera.render(world);
-    Tuple color = (Tuple) image.pixelAt(5,5);
-
-    std::cout << color.toString() << std::endl;
-
-    Camera camera2 = Camera(201,101,M_PI /2);
-    Ray r2 = camera2.rayForPixel(0,0);
-    std::cout << "origin: " << r2.getOrigin().toString() << std::endl;
-    std::cout << "direction: " << r2.getDirection().toString() << std::endl;
 
     return 0;
 }
