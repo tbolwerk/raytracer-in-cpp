@@ -610,6 +610,40 @@ class Ray
         }
 };
 
+
+class Pattern
+{
+    private:
+        Matrix transform = Matrix(4,4).identity();
+    public:
+        virtual Color patternAt(Point p) = 0;
+        void setTransform(Matrix transform)
+        {
+            this->transform = transform;
+        }
+        Matrix getTransform() { return this->transform; }
+};
+
+class StripePattern: public Pattern
+{
+    Color a;
+    Color b;
+    public:
+        StripePattern(Color a, Color b)
+        {
+            this->a = a;
+            this->b = b;
+        }
+        Color patternAt(Point p)
+        {
+            if(equal(std::fmod(floor(p.getX()), 2.0), 0.0))
+            {
+                return this->a;
+            }
+            return this->b;
+        }
+};
+
 class Material
 {
     private:
@@ -618,6 +652,7 @@ class Material
         double diffuse;
         double specular;
         double shininess;
+        std::optional<Pattern*> pattern = std::nullopt;
     public:
         Material()
         {
@@ -667,6 +702,14 @@ class Material
         {
             this->specular = specular;
         }
+        void setPattern(Pattern *pattern)
+        {
+            this->pattern = std::optional<Pattern*>(pattern);
+        }
+        std::optional<Pattern*> getPattern()
+        {
+            return this->pattern;
+        }
 };
 
 class Object
@@ -683,6 +726,13 @@ class Object
             Tuple local_normal = this->localNormalAt(to_point(local_point));
             Vector world_normal = to_vector(this->transformation.inverse().transpose() * local_normal);
             return world_normal.normalize();
+        }
+        Color patternAtObject(Pattern *pattern, Point world_point)
+        {
+            Point object_point = to_point(this->getTransformation().inverse() * world_point);
+            Point pattern_point = to_point(pattern->getTransform().inverse() * object_point);
+
+            return pattern->patternAt(pattern_point);
         }
         std::string toString()
         {
@@ -936,12 +986,16 @@ class Computation
         bool isInside() { return this->inside; }
 };
 
-
-
-Color lighting(Material material, Light light, Point point, Vector eyev, Vector normalv, bool in_shadow)
+Color lighting(Material material, Object* object, Light light, Point point, Vector eyev, Vector normalv, bool in_shadow)
 {
+    Color color = material.getColor();
+    if(material.getPattern().has_value())
+    {
+        Pattern *pattern = material.getPattern().value();
+        color = object->patternAtObject(pattern, point);
+    }
 
-    Color effective_color = to_color(material.getColor() * light.getIntensity());
+    Color effective_color = to_color(color * light.getIntensity());
     Vector lightv = to_vector((light.getPosition() - point).normalize());
     Color ambient = to_color(effective_color * material.getAmbient());
     double light_dot_normal = lightv.dot(normalv);
@@ -978,7 +1032,7 @@ class World
         Color shadeHit(Computation comps)
         {
             bool shadowed = this->isShadowed(comps.getOverPoint());
-            return lighting(comps.getObject()->getMaterial(), this->light, comps.getOverPoint(), comps.getEyev(), comps.getNormalv(), shadowed);
+            return lighting(comps.getObject()->getMaterial(), comps.getObject(), this->light, comps.getOverPoint(), comps.getEyev(), comps.getNormalv(), shadowed);
         }
         Intersections intersectWorld(Ray ray)
         {
@@ -1226,7 +1280,7 @@ void chapter6()
                 Point point = r.position(hit.getTime());
                 Vector normal = to_vector(hit.getObject()->normalAt(point));
                 Vector eye = to_vector(-r.getDirection());
-                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal, false);
+                Color color = lighting(hit.getObject()->getMaterial(), hit.getObject(), light, point, eye, normal, false);
                 c.writePixel(x,y,color);
             }
         }
@@ -1270,7 +1324,7 @@ void chapter6_1()
                 Point point = r.position(hit.getTime());
                 Vector normal = to_vector(hit.getObject()->normalAt(point));
                 Vector eye = to_vector(-r.getDirection());
-                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal, false);
+                Color color = lighting(hit.getObject()->getMaterial(), hit.getObject(), light, point, eye, normal, false);
                 c.writePixel(x,y,color);
             }
         }
@@ -1314,7 +1368,7 @@ void chapter6_2()
                 Point point = r.position(hit.getTime());
                 Vector normal = to_vector(hit.getObject()->normalAt(point));
                 Vector eye = to_vector(-r.getDirection());
-                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal, false);
+                Color color = lighting(hit.getObject()->getMaterial(),hit.getObject(), light, point, eye, normal, false);
                 c.writePixel(x,y,color);
             }
         }
@@ -1358,7 +1412,7 @@ void chapter6_3()
                 Point point = r.position(hit.getTime());
                 Vector normal = to_vector(hit.getObject()->normalAt(point));
                 Vector eye = to_vector(-r.getDirection());
-                Color color = lighting(hit.getObject()->getMaterial(), light, point, eye, normal, false);
+                Color color = lighting(hit.getObject()->getMaterial(), hit.getObject(), light, point, eye, normal, false);
                 c.writePixel(x,y,color);
             }
         }
@@ -1470,6 +1524,55 @@ void chapter9()
     canvas.toPPM("chapter9.ppm");
 }
 
+void chapter10()
+{
+    Plane floor = Plane();
+    floor.setTransformation(Matrix::scaling(10, 0.01, 10));
+    Material floor_material = Material();
+    floor_material.setColor(Color(1,0.9,0.9));
+    floor_material.setSpecular(0);
+    StripePattern pattern = StripePattern(Color::black(), Color::white());
+    floor_material.setPattern(&pattern);
+    floor.setMaterial(floor_material);
+
+    Sphere middle = Sphere();
+    Material middle_material = Material();
+    middle_material.setColor(Color(0.1,1,0.5));
+    middle_material.setDiffuse(0.7);
+    middle_material.setSpecular(0.3);
+    middle.setMaterial(middle_material);
+    middle.setTransformation(Matrix::translation(-0.5,1,0.5));
+
+    Sphere right = Sphere();
+    Material right_material = Material();
+    right_material.setColor(Color(0.5,1,0.1));
+    right_material.setDiffuse(0.7);
+    right_material.setSpecular(0.3);
+    right.setMaterial(right_material);
+    right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
+
+    Sphere left = Sphere();
+    Material left_material = Material();
+    left_material.setColor(Color(1,0.8,0.1));
+    left_material.setDiffuse(0.7);
+    left_material.setSpecular(0.3);
+    left.setMaterial(left_material);
+    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
+
+    World world = World();
+    world.setLight(PointLight(Point(-10,10,-10), Color(1,1,1)));
+    world.addObject(&middle);
+    world.addObject(&left);
+    world.addObject(&right);
+    world.addObject(&floor);
+  
+    Camera camera = Camera(100,50,M_PI /3);
+    camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
+
+    Canvas canvas = camera.render(world);
+    canvas.toPPM("chapter10.ppm");
+}
+
 void multiplying_a_product_by_its_inverse()
 {
     double arr1[16] = {3,-9, 7,3,
@@ -1529,6 +1632,7 @@ int main(int argc, char * argv[])
     chapter6_3();
     chapter7();
     chapter9();
+    chapter10();
 
     return 0;
 }
