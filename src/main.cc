@@ -940,7 +940,6 @@ class World
         std::vector<Object*> objects = std::vector<Object*>();
         bool isShadowed(Point point)
         {
-            std::cout << point.toString() << std::endl;
             bool is_shadowed = false;
             Tuple v = this->light.getPosition() - point;
             double distance = v.magnitude();
@@ -958,21 +957,8 @@ class World
         }
         Color shadeHit(Computation comps)
         {
-            Point over_point = comps.getOverPoint();
-            bool is_shadowed = false; // this->isShadowed(over_point); // TODO: replace with isShadowed function, somehow this is bugged?
-            Tuple v = this->light.getPosition() - comps.getOverPoint();
-            double distance = v.magnitude();
-            Tuple direction = v.normalize();
-
-            Ray r = Ray(comps.getOverPoint(), to_vector(direction));
-            Intersections intersections = this->intersectWorld(r);
-            
-            std::optional<Intersection> h = intersections.hit();
-            if(h.has_value() && h.value().getTime() < distance)
-            {
-                is_shadowed = true;
-            }
-            return lighting(comps.getObject()->getMaterial(), this->light, over_point, comps.getEyev(), comps.getNormalv(), is_shadowed);
+            bool shadowed = this->isShadowed(comps.getOverPoint());
+            return lighting(comps.getObject()->getMaterial(), this->light, comps.getOverPoint(), comps.getEyev(), comps.getNormalv(), shadowed);
         }
         Intersections intersectWorld(Ray ray)
         {
