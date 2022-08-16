@@ -636,11 +636,70 @@ class StripePattern: public Pattern
         }
         Color patternAt(Point p)
         {
-            if(equal(std::fmod(floor(p.getX()), 2.0), 0.0))
+            if(equal(fmod(floor(p.getX()), 2.0), 0.0))
             {
                 return this->a;
             }
             return this->b;
+        }
+};
+
+class GradientPattern: public Pattern
+{
+    private:
+        Color a;
+        Color b;
+    public:
+        GradientPattern(Color a, Color b)
+        {
+            this->a = a;
+            this->b = b;
+        }
+        Color patternAt(Point p)
+        {
+            return to_color(a + (b - a) * (p.getX() - floor(p.getZ())));
+        }
+};
+
+class RingPattern: public Pattern
+{
+    private:
+        Color a;
+        Color b;
+    public:
+        RingPattern(Color a, Color b)
+        {
+            this->a = a;
+            this->b = b;
+        }
+        Color patternAt(Point p)
+        {
+            if(equal(fmod(floor(sqrt(pow(p.getX(),2) + pow(p.getZ(), 2))),2), 0))
+            {
+                return a;
+            }
+            return b;
+        }
+};
+
+class CheckerPattern: public Pattern
+{
+    private:
+        Color a;
+        Color b;
+    public:
+        CheckerPattern(Color a, Color b)
+        {
+            this->a = a;
+            this->b = b;
+        }
+        Color patternAt(Point p)
+        {
+            if(equal(fmod(fabs(p.getX()) + fabs(p.getY()) + fabs(p.getZ()),2), 0))
+            {
+                return a;
+            }
+            return b;
         }
 };
 
@@ -1531,8 +1590,8 @@ void chapter10()
     Material floor_material = Material();
     floor_material.setColor(Color(1,0.9,0.9));
     floor_material.setSpecular(0);
-    StripePattern pattern = StripePattern(Color::black(), Color::white());
-    floor_material.setPattern(&pattern);
+    RingPattern floor_pattern = RingPattern(Color(1,0.9,0.9), Color::white());
+    floor_material.setPattern(&floor_pattern);
     floor.setMaterial(floor_material);
 
     Sphere middle = Sphere();
@@ -1540,6 +1599,8 @@ void chapter10()
     middle_material.setColor(Color(0.1,1,0.5));
     middle_material.setDiffuse(0.7);
     middle_material.setSpecular(0.3);
+    StripePattern middle_pattern = StripePattern(Color(0.1,1,0.5), Color::white());
+    middle_material.setPattern(&middle_pattern);
     middle.setMaterial(middle_material);
     middle.setTransformation(Matrix::translation(-0.5,1,0.5));
 
@@ -1548,6 +1609,8 @@ void chapter10()
     right_material.setColor(Color(0.5,1,0.1));
     right_material.setDiffuse(0.7);
     right_material.setSpecular(0.3);
+    GradientPattern right_pattern = GradientPattern(Color::white(), Color(0.5,1,0.1));
+    right_material.setPattern(&right_pattern);
     right.setMaterial(right_material);
     right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
 
@@ -1556,6 +1619,8 @@ void chapter10()
     left_material.setColor(Color(1,0.8,0.1));
     left_material.setDiffuse(0.7);
     left_material.setSpecular(0.3);
+    CheckerPattern left_pattern = CheckerPattern(Color::white(), Color(1,0.8,0.1));
+    left_material.setPattern(&left_pattern);
     left.setMaterial(left_material);
     left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
 
