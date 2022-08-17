@@ -6,9 +6,12 @@ build:
 	./build/raytracer
 clean:
 	rm -rf build
+	rm -rf debug
 	rm *ppm
 	rm -rf raytracer.dSYM
 debug:
-	c++ src/main.cc -g -O2 -o raytracer -std=c++17
-	./raytracer
+	mkdir debug
+	c++ src/main.cc -g -O2 -o debug/raytracer -std=c++17 -Wall -Wextra -pedantic
+	./debug/raytracer
+
 	
