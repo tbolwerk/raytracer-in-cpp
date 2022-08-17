@@ -6,12 +6,14 @@
 #include <vector>      
 #include <queue>
 #include <optional>
+#include <thread>
+#include <future>
 const double EPSILON = 0.00001;
-bool equal(double a, double b)
+static bool equal(double a, double b)
 {
     return abs(a - b) < EPSILON;
 }
-double radians(double degree)
+static double radians(double degree)
 {
     return (degree / 180) * M_PI;
 }
@@ -174,7 +176,7 @@ class Point: public Tuple {
         }
 };
 
-int clamp(double a, int min, int max)
+static int clamp(double a, int min, int max)
 {
     int x = (int) round(a * max);
     if(x < min){
@@ -524,17 +526,17 @@ class Matrix
         }
 };
 
-Point to_point(Tuple tuple)
+static Point to_point(Tuple tuple)
 {
     return Point(tuple.getX(), tuple.getY(), tuple.getZ());
 }
 
-Vector to_vector(Tuple tuple)
+static Vector to_vector(Tuple tuple)
 {
     return Vector(tuple.getX(), tuple.getY(), tuple.getZ());
 }
 
-Color to_color(Tuple tuple)
+static Color to_color(Tuple tuple)
 {
     return Color(tuple.getX(), tuple.getY(), tuple.getZ());
 }
@@ -695,7 +697,7 @@ class CheckerPattern: public Pattern
         }
         Color patternAt(Point p)
         {
-            if(equal(fmod(fabs(p.getX()) + fabs(p.getY()) + fabs(p.getZ()),2), 0))
+            if(equal(fmod(floor(p.getX()) + floor(p.getY()) + floor(p.getZ()),2), 0))
             {
                 return a;
             }
@@ -1045,7 +1047,7 @@ class Computation
         bool isInside() { return this->inside; }
 };
 
-Color lighting(Material material, Object* object, Light light, Point point, Vector eyev, Vector normalv, bool in_shadow)
+static Color lighting(Material material, Object* object, Light light, Point point, Vector eyev, Vector normalv, bool in_shadow)
 {
     Color color = material.getColor();
     if(material.getPattern().has_value())
@@ -1154,7 +1156,7 @@ class World
         }
 };
 
-Matrix view_transform(Point from, Point to, Vector up)
+static Matrix view_transform(Point from, Point to, Vector up)
 {
     Vector forward = to_vector((to - from).normalize());
     Vector upn = to_vector(up.normalize());
@@ -1168,7 +1170,7 @@ Matrix view_transform(Point from, Point to, Vector up)
     return orientation.translate(-from.getX(), -from.getY(), -from.getZ());
 }
 
-Projectile tick(Environment env, Projectile proj)
+static Projectile tick(Environment env, Projectile proj)
 {
     Point position = to_point(proj.getPosition() + proj.getVelocity());
     Vector velocity = to_vector(proj.getVelocity() + env.getGravity() + env.getWind());
@@ -1590,16 +1592,30 @@ void chapter10()
     Material floor_material = Material();
     floor_material.setColor(Color(1,0.9,0.9));
     floor_material.setSpecular(0);
-    RingPattern floor_pattern = RingPattern(Color(1,0.9,0.9), Color::white());
+    CheckerPattern floor_pattern = CheckerPattern(Color::black(), Color::white());
     floor_material.setPattern(&floor_pattern);
     floor.setMaterial(floor_material);
+
+    Plane left_wall = Plane();
+    left_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(-M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
+    Material left_wall_material = Material();
+    CheckerPattern left_wall_pattern = CheckerPattern(Color(1,0.9,0.9), Color::white());
+    left_wall_material.setPattern(&left_wall_pattern);
+    left_wall.setMaterial(left_wall_material);
+
+    Plane right_wall = Plane();
+    right_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
+    Material right_wall_material = Material();
+    CheckerPattern right_wall_pattern = CheckerPattern(Color(1,0.9,0.9), Color::white());
+    right_wall_material.setPattern(&right_wall_pattern);
+    right_wall.setMaterial(right_wall_material);
 
     Sphere middle = Sphere();
     Material middle_material = Material();
     middle_material.setColor(Color(0.1,1,0.5));
     middle_material.setDiffuse(0.7);
     middle_material.setSpecular(0.3);
-    StripePattern middle_pattern = StripePattern(Color(0.1,1,0.5), Color::white());
+    RingPattern middle_pattern = RingPattern(Color(0.1,1,0.5), Color(0.5,1,0.5));
     middle_material.setPattern(&middle_pattern);
     middle.setMaterial(middle_material);
     middle.setTransformation(Matrix::translation(-0.5,1,0.5));
@@ -1609,7 +1625,7 @@ void chapter10()
     right_material.setColor(Color(0.5,1,0.1));
     right_material.setDiffuse(0.7);
     right_material.setSpecular(0.3);
-    GradientPattern right_pattern = GradientPattern(Color::white(), Color(0.5,1,0.1));
+    StripePattern right_pattern = StripePattern(Color(0.9,1,0.1), Color(0.5,1,0.1));
     right_material.setPattern(&right_pattern);
     right.setMaterial(right_material);
     right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
@@ -1619,7 +1635,7 @@ void chapter10()
     left_material.setColor(Color(1,0.8,0.1));
     left_material.setDiffuse(0.7);
     left_material.setSpecular(0.3);
-    CheckerPattern left_pattern = CheckerPattern(Color::white(), Color(1,0.8,0.1));
+    GradientPattern left_pattern = GradientPattern(Color(1,1,0.1), Color(1,0.8,0.1));
     left_material.setPattern(&left_pattern);
     left.setMaterial(left_material);
     left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
@@ -1630,6 +1646,8 @@ void chapter10()
     world.addObject(&left);
     world.addObject(&right);
     world.addObject(&floor);
+    world.addObject(&left_wall);
+    world.addObject(&right_wall);
   
     Camera camera = Camera(100,50,M_PI /3);
     camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
@@ -1673,6 +1691,7 @@ void shadow_is_hit(){
     bool b2 = w.isShadowed(Point(10,-10,10));
     assert(b2 == true && "Shadows");
 }
+
 void feature_matrices()
 {
     multiplying_a_product_by_its_inverse();
