@@ -1,3 +1,5 @@
+CC=c++
+
 build:
 	mkdir build
 	cmake -Bbuild -DCMAKE_BUILD_TYPE=Release
@@ -11,7 +13,7 @@ clean:
 	rm -rf raytracer.dSYM
 debug:
 	mkdir debug
-	c++ src/main.cc -g -O2 -o debug/raytracer -std=c++17 -Wall -Wextra -pedantic
+	$(CC) src/main.cc -g -O2 -o debug/raytracer -std=c++17 -Wall -Wextra -pedantic
 	./debug/raytracer
 
 	
