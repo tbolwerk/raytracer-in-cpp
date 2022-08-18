@@ -15,5 +15,6 @@ debug:
 	mkdir debug
 	$(CC) src/main.cc -g -O2 -o debug/raytracer -std=c++17 -Wall -Wextra -pedantic
 	./debug/raytracer
+	rm -rf debug
 
 	

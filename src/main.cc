@@ -288,6 +288,16 @@ class Canvas
                 myfile.close();
              }
         }
+        void merge(Canvas canvas)
+        {
+            for(int y = 0; y < this->height; y ++)
+            {
+                for(int x = 0; x < this->width; x ++)
+                {
+                    if(canvas.pixelAt(x,y) != Color::black()) this->writePixel(x,y, canvas.pixelAt(x,y));
+                }
+            }
+        }
 };
 
 class Matrix
@@ -714,6 +724,7 @@ class Material
         double specular;
         double shininess;
         std::optional<Pattern*> pattern = std::nullopt;
+        double reflective;
     public:
         Material()
         {
@@ -722,6 +733,7 @@ class Material
             this->diffuse = 0.9;
             this->specular = 0.9;
             this->shininess = 200.0;
+            this->reflective = 0.0;
         }
         void setAmbient(double ambient)
         {
@@ -1079,6 +1091,8 @@ static Color lighting(Material material, Object* object, Light light, Point poin
         else
         {
             double factor = pow(reflect_dot_eye, material.getShininess());
+            Tuple v = light.getIntensity() * material.getSpecular() * factor;
+            specular = to_color(v);
         }
     }
     return to_color(ambient + diffuse + specular);
@@ -1238,12 +1252,63 @@ class Camera
 
             return image;
         }
+        Canvas render_single_threaded(Canvas image, World world, int xoffset, int yoffset, int width, int height)
+        {
+            for(int y = yoffset; y < height; y ++)
+            {
+                for(int x = xoffset; x < width; x ++)
+                {
+                    Ray ray = this->rayForPixel(x,y);
+                    Color color = world.colorAt(ray);
+                    image.writePixel(x,y,color);
+                }
+            }
+            return image;
+        }
         void setTransform(Matrix transform)
         {
             this->transform = transform;
         }
         double getPixelSize(){return this->pixel_size;}
+        int getHSize() { return this->hsize;}
+        int getVSize() { return this->vsize;}
 };
+
+static Canvas render_single_threaded(Canvas image, Camera camera, World world, int xoffset, int yoffset, int width, int height)
+{
+    return camera.render_single_threaded(image, world, xoffset,yoffset,width + xoffset, height + yoffset);
+}
+
+static Canvas render_multi_threaded(Camera camera,  World world)
+{
+    unsigned int n = sqrt(std::thread::hardware_concurrency());
+    assert(n % 2 == 0 && "number of threads needs to be even");
+    int width = camera.getHSize();
+    int height = camera.getVSize();
+    Canvas image = Canvas(width,height);
+    int partial_width = width / n;
+    int partial_height = height / n;
+    assert(partial_width * n == width && "partial_width needs to be evenly divided by number of threads");
+    assert(partial_height * n == height && "partial_height needs to be evenly divided by number of threads");
+    std::vector<std::future<Canvas> > v = std::vector<std::future<Canvas> >();
+    for(int i = 0; i < n; i ++)
+    {
+        int yoffset = i * partial_height;
+
+        for(int j = 0; j < n; j ++)
+        {
+            int xoffset = j * partial_width;
+            std::future<Canvas> a1 = std::async(std::launch::async, render_single_threaded, image, camera, world, xoffset, yoffset, partial_width, partial_height);
+            v.push_back(std::move(a1));
+        }
+    }
+    for(int i = 0; i < pow(n,2); i ++)
+    {
+        Canvas partial = v.at(i).get();
+        image.merge(partial);
+    }
+    return image;
+}
 
 void chapter1(){
     Point start = Point(0,1,0);
@@ -1704,6 +1769,60 @@ void feature_shadows()
 
 int main(int argc, char * argv[])
 {
+
+  Sphere floor = Sphere();
+    floor.setTransformation(Matrix::scaling(10, 0.01, 10));
+    Material floor_material = Material();
+    floor_material.setColor(Color(1,0.9,0.9));
+    floor_material.setSpecular(0);
+    floor.setMaterial(floor_material);
+
+    Sphere left_wall = Sphere();
+    left_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(-M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
+    left_wall.setMaterial(Material());
+
+    Sphere right_wall = Sphere();
+    right_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
+    right_wall.setMaterial(Material());
+
+    Sphere middle = Sphere();
+    Material middle_material = Material();
+    middle_material.setColor(Color(0.1,1,0.5));
+    middle_material.setDiffuse(0.7);
+    middle_material.setSpecular(0.3);
+    middle.setMaterial(middle_material);
+    middle.setTransformation(Matrix::translation(-0.5,1,0.5));
+
+    Sphere right = Sphere();
+    Material right_material = Material();
+    right_material.setColor(Color(0.5,1,0.1));
+    right_material.setDiffuse(0.7);
+    right_material.setSpecular(0.3);
+    right.setMaterial(right_material);
+    right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
+
+    Sphere left = Sphere();
+    Material left_material = Material();
+    left_material.setColor(Color(1,0.8,0.1));
+    left_material.setDiffuse(0.7);
+    left_material.setSpecular(0.3);
+    left.setMaterial(left_material);
+    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
+
+    World world = World();
+    world.setLight(PointLight(Point(-10,10,-10), Color(1,1,1)));
+    world.addObject(&middle);
+    world.addObject(&left);
+    world.addObject(&right);
+    world.addObject(&left_wall);
+    world.addObject(&right_wall);
+    world.addObject(&floor);
+  
+    Camera camera = Camera(100,50, M_PI /3);
+    camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
+    Canvas image = render_multi_threaded(camera, world);
+    image.toPPM("render.ppm");
+
     feature_matrices();
     feature_shadows();
 
