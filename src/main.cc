@@ -862,6 +862,10 @@ class Intersection
         {
             return this->time > intersection.time;
         }
+        bool operator ==(const Intersection &intersection) const
+        {
+            return this->toString() == intersection.toString();
+        }
 };
 
 class Intersections
@@ -1056,7 +1060,7 @@ class Computation
     public:
         Computation(Intersection intersection, Ray ray, Intersections xs = Intersections())
         {
-            /*if(xs.empty())*/ xs.push(std::vector<Intersection>({intersection}));
+            xs.push(std::vector<Intersection>({intersection})); //TODO: add its own intersection, since we just popped it.
             this->t = intersection.getTime();
             this->object = intersection.getObject();
             this->point = ray.position(this->t);
@@ -1081,31 +1085,45 @@ class Computation
             while(!xs.empty())
             {
                 std::optional<Intersection> hit = xs.hit();
-                if(hit.has_value())
+                if(!hit.has_value()) 
+                {
+                    continue;
+                }
+                bool isHit = hit.value() == intersection;
+                if(!isHit) std::cout << std::boolalpha << "isHit "<< isHit << std::endl;
+                if(isHit)
                 {
                     if(containers.empty())
                     {
                         this->n1 = 1.0;
-                        this->n2 = 1.0;
                     }
                     else
                     {
                         this->n1 = containers.back()->getMaterial().getRefractiveIndex();
-                        this->n2 = containers.back()->getMaterial().getRefractiveIndex();
                     }
-                    break;
                 }
                 Object* needle = hit.value().getObject();
-                auto find_object = [] (std::vector<Object*> list, Object * needle) { return (std::find_if(list.begin(), list.end(), [needle](Object* obj) { return obj->getId() == needle->getId();}));  };
-                auto includes = [find_object] (std::vector<Object*> list, Object * needle) { return (find_object(list, needle) != list.end()); };
-                
-                if(includes(containers, needle))
+                auto it = std::find(containers.begin(), containers.end(), needle);
+                if(it != containers.end())
                 {
-                    containers.erase(std::remove(containers.begin(), containers.end(), *find_object(containers, needle)), containers.end());
+                    containers.erase(it);
                 }
                 else
                 {
                     containers.push_back(needle);
+                }
+
+                if(isHit)
+                {
+                    if(containers.empty())
+                    {
+                        this->n2 = 1.0;
+                    }
+                    else
+                    {
+                        this->n2 = containers.back()->getMaterial().getRefractiveIndex();
+                    }
+                    break;
                 }
             }
         }
@@ -1174,7 +1192,11 @@ class World
             double n_ratio = comps.getN1() / comps.getN2();
             double cos_i = comps.getEyev().dot(comps.getNormalv());
             double sin2_t = pow(n_ratio, 2) * (1 - pow(cos_i, 2));
-            double cos_t = sqrt(1.0 - sin2_t);
+            if(sin2_t > 1.0)
+            {
+                return Color::black();
+            }
+            double cos_t = sqrtf(1.0 - sin2_t);
             
             Vector direction = to_vector(comps.getNormalv() * (n_ratio * cos_i - cos_t) - comps.getEyev() * n_ratio);
             Ray refracted_ray = Ray(comps.getUnderPoint(), direction);
@@ -1207,7 +1229,9 @@ class World
 
             Color reflected = reflectedColor(comps, remaining);
 
-            return to_color(surface + reflected);
+            Color refracted = refractedColor(comps, remaining);
+
+            return to_color(surface + reflected + refracted);
         }
         Intersections intersectWorld(Ray ray)
         {
@@ -1247,7 +1271,7 @@ class World
             std::optional<Intersection> m_intersection = xs.hit();
             if(m_intersection.has_value()){
                 Intersection hit = m_intersection.value();
-                Computation comps = Computation(hit, ray);
+                Computation comps = Computation(hit, ray, xs);
                 return shadeHit(comps, remaining);
             }
             return Color::black();
@@ -1895,20 +1919,20 @@ int main(int argc, char * argv[])
     // middle.setMaterial(middle_material);
     middle.setTransformation(Matrix::translation(-0.5,1,0.5));
 
-    Sphere right = Sphere();
-    Material right_material = Material();
-    right_material.setColor(Color(0.5,1,0.1));
-    right_material.setDiffuse(0.7);
-    right_material.setSpecular(0.3);
-    right.setMaterial(right_material);
+    Sphere right = Sphere::glassSphere();
+    // Material right_material = Material();
+    // right_material.setColor(Color(0.5,1,0.1));
+    // right_material.setDiffuse(0.7);
+    // right_material.setSpecular(0.3);
+    // right.setMaterial(right_material);
     right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
 
-    Sphere left = Sphere();
-    Material left_material = Material();
-    left_material.setColor(Color(1,0.8,0.1));
-    left_material.setDiffuse(0.7);
-    left_material.setSpecular(0.3);
-    left.setMaterial(left_material);
+    Sphere left = Sphere::glassSphere();
+    // Material left_material = Material();
+    // left_material.setColor(Color(1,0.8,0.1));
+    // left_material.setDiffuse(0.7);
+    // left_material.setSpecular(0.3);
+    // left.setMaterial(left_material);
     left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
 
     World world = World();
