@@ -725,6 +725,8 @@ class Material
         double shininess;
         std::optional<Pattern*> pattern = std::nullopt;
         double reflective;
+        double refractive_index;
+        double transparency;
     public:
         Material()
         {
@@ -734,6 +736,8 @@ class Material
             this->specular = 0.9;
             this->shininess = 200.0;
             this->reflective = 0.0;
+            this->transparency = 0.0;
+            this->refractive_index = 1.0;
         }
         void setAmbient(double ambient)
         {
@@ -783,6 +787,12 @@ class Material
         {
             return this->pattern;
         }
+        double getReflective() { return this->reflective; }
+        void setReflective(double reflective) { this->reflective = reflective; }
+        double getTransparency() { return this->transparency;}
+        void setTransparency(double transparency) { this->transparency = transparency;}
+        double getRefractiveIndex() { return this->refractive_index; }
+        void setRefractiveIndex(double refractive_index) { this->refractive_index = refractive_index;}
 };
 
 class Object
@@ -936,30 +946,38 @@ class Sphere: public Hitable
             this->position = position;
             this->radius = radius;
         }
-        public:
-            std::vector<Intersection> localIntersect(Ray local_ray)
-            {
-                Tuple object_to_ray = local_ray.getOrigin() - this->position;
-                double a = local_ray.getDirection().dot(local_ray.getDirection());
-                double b = 2 * local_ray.getDirection().dot(object_to_ray);
-                double c = object_to_ray.dot(object_to_ray) - this->radius; //TODO: this->radius might be replaced with just 1
+        static Sphere glassSphere()
+        {
+            Material material = Material();
+            material.setTransparency(1);
+            material.setRefractiveIndex(1.5);
+            Sphere sphere = Sphere();
+            sphere.setMaterial(material);
+            return sphere;
+        }
+        std::vector<Intersection> localIntersect(Ray local_ray)
+        {
+            Tuple object_to_ray = local_ray.getOrigin() - this->position;
+            double a = local_ray.getDirection().dot(local_ray.getDirection());
+            double b = 2 * local_ray.getDirection().dot(object_to_ray);
+            double c = object_to_ray.dot(object_to_ray) - this->radius; //TODO: this->radius might be replaced with just 1
 
-                double discriminant = pow(b,2) - 4 * a * c;
+            double discriminant = pow(b,2) - 4 * a * c;
 
-                if(discriminant < 0){
-                    return std::vector<Intersection>();
-                }
-                double t1 = (-b - sqrt(discriminant)) / (2 * a);
-                double t2 = (-b + sqrt(discriminant)) / (2 * a);
-                std::vector<Intersection> v = std::vector<Intersection>();
-                
-                v.push_back(Intersection(t1, this));
-                v.push_back(Intersection(t2, this));
-                return v;
+            if(discriminant < 0){
+                return std::vector<Intersection>();
             }
-            Vector localNormalAt(Point world_point){
-                return Vector(world_point.getX(), world_point.getY(), world_point.getZ());
-            }
+            double t1 = (-b - sqrt(discriminant)) / (2 * a);
+            double t2 = (-b + sqrt(discriminant)) / (2 * a);
+            std::vector<Intersection> v = std::vector<Intersection>();
+            
+            v.push_back(Intersection(t1, this));
+            v.push_back(Intersection(t2, this));
+            return v;
+        }
+        Vector localNormalAt(Point world_point){
+            return Vector(world_point.getX(), world_point.getY(), world_point.getZ());
+        }
 };
 
 class Plane: public Hitable
@@ -1030,6 +1048,8 @@ class Computation
         Vector normalv;
         bool inside;
         Point over_point;
+        Vector reflectv;
+        double n1,n2;
     public:
         Computation(Intersection intersection, Ray ray)
         {
@@ -1050,6 +1070,11 @@ class Computation
             }
 
             this->over_point = to_point(this->point + this->normalv * EPSILON);
+            this->reflectv = to_vector(ray.getDirection().reflect(this->normalv));
+        }
+        Computation(Intersections intersections, Ray ray)
+        {
+           
         }
         Point getPoint() { return this->point; }
         Point getOverPoint() { return this->over_point; }
@@ -1057,6 +1082,7 @@ class Computation
         Vector getEyev() { return this->eyev; }
         Vector getNormalv() { return this->normalv; }
         bool isInside() { return this->inside; }
+        Vector getReflectv() { return this->reflectv; }
 };
 
 static Color lighting(Material material, Object* object, Light light, Point point, Vector eyev, Vector normalv, bool in_shadow)
@@ -1103,11 +1129,31 @@ class World
     private:
         Light light;
         std::vector<Object*> objects = std::vector<Object*>();
-       
-        Color shadeHit(Computation comps)
+        Color reflectedColor(Computation comps, int remaining)
+        {
+            if(remaining <= 0)
+            {
+                return Color::black();
+            }
+            double reflective = comps.getObject()->getMaterial().getReflective();
+            if(reflective == 0)
+            {
+                return Color::black();
+            }
+            Ray reflect_ray = Ray(comps.getOverPoint(), comps.getReflectv());
+            Color color = this->colorAt(reflect_ray, remaining - 1);
+
+            return to_color(color * reflective);
+        }
+        Color shadeHit(Computation comps, int remaining)
         {
             bool shadowed = this->isShadowed(comps.getOverPoint());
-            return lighting(comps.getObject()->getMaterial(), comps.getObject(), this->light, comps.getOverPoint(), comps.getEyev(), comps.getNormalv(), shadowed);
+            
+            Color surface = lighting(comps.getObject()->getMaterial(), comps.getObject(), this->light, comps.getOverPoint(), comps.getEyev(), comps.getNormalv(), shadowed);
+
+            Color reflected = reflectedColor(comps, remaining);
+
+            return to_color(surface + reflected);
         }
         Intersections intersectWorld(Ray ray)
         {
@@ -1140,14 +1186,14 @@ class World
         {
             this->light = light;
         }
-        Color colorAt(Ray ray)
+        Color colorAt(Ray ray, int remaining = 4)
         {
             Intersections xs = intersectWorld(ray);
             std::optional<Intersection> m_intersection = xs.hit();
             if(m_intersection.has_value()){
                 Intersection hit = m_intersection.value();
                 Computation comps = Computation(hit, ray);
-                return shadeHit(comps);
+                return shadeHit(comps, remaining);
             }
             return Color::black();
         }
@@ -1790,6 +1836,7 @@ int main(int argc, char * argv[])
     middle_material.setColor(Color(0.1,1,0.5));
     middle_material.setDiffuse(0.7);
     middle_material.setSpecular(0.3);
+    middle_material.setReflective(0.3);
     middle.setMaterial(middle_material);
     middle.setTransformation(Matrix::translation(-0.5,1,0.5));
 
