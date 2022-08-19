@@ -837,6 +837,8 @@ class Object
         {
             return this->material;
         }
+        std::string getId() { return this->id; }
+        void setId(std::string id) { this->id = id; }
 };
 
 class Intersection
@@ -1048,11 +1050,13 @@ class Computation
         Vector normalv;
         bool inside;
         Point over_point;
+        Point under_point;
         Vector reflectv;
         double n1,n2;
     public:
-        Computation(Intersection intersection, Ray ray)
+        Computation(Intersection intersection, Ray ray, Intersections xs = Intersections())
         {
+            /*if(xs.empty())*/ xs.push(std::vector<Intersection>({intersection}));
             this->t = intersection.getTime();
             this->object = intersection.getObject();
             this->point = ray.position(this->t);
@@ -1070,19 +1074,51 @@ class Computation
             }
 
             this->over_point = to_point(this->point + this->normalv * EPSILON);
+            this->under_point = to_point(this->point - this->normalv * EPSILON);
             this->reflectv = to_vector(ray.getDirection().reflect(this->normalv));
-        }
-        Computation(Intersections intersections, Ray ray)
-        {
-           
+
+            std::vector<Object*> containers = std::vector<Object*>();
+            while(!xs.empty())
+            {
+                std::optional<Intersection> hit = xs.hit();
+                if(hit.has_value())
+                {
+                    if(containers.empty())
+                    {
+                        this->n1 = 1.0;
+                        this->n2 = 1.0;
+                    }
+                    else
+                    {
+                        this->n1 = containers.back()->getMaterial().getRefractiveIndex();
+                        this->n2 = containers.back()->getMaterial().getRefractiveIndex();
+                    }
+                    break;
+                }
+                Object* needle = hit.value().getObject();
+                auto find_object = [] (std::vector<Object*> list, Object * needle) { return (std::find_if(list.begin(), list.end(), [needle](Object* obj) { return obj->getId() == needle->getId();}));  };
+                auto includes = [find_object] (std::vector<Object*> list, Object * needle) { return (find_object(list, needle) != list.end()); };
+                
+                if(includes(containers, needle))
+                {
+                    containers.erase(std::remove(containers.begin(), containers.end(), *find_object(containers, needle)), containers.end());
+                }
+                else
+                {
+                    containers.push_back(needle);
+                }
+            }
         }
         Point getPoint() { return this->point; }
         Point getOverPoint() { return this->over_point; }
+        Point getUnderPoint() { return this->under_point; }
         Object* getObject() { return this->object; }
         Vector getEyev() { return this->eyev; }
         Vector getNormalv() { return this->normalv; }
         bool isInside() { return this->inside; }
         Vector getReflectv() { return this->reflectv; }
+        double getN1() {return this->n1;}
+        double getN2() {return this->n2;}
 };
 
 static Color lighting(Material material, Object* object, Light light, Point point, Vector eyev, Vector normalv, bool in_shadow)
@@ -1129,6 +1165,24 @@ class World
     private:
         Light light;
         std::vector<Object*> objects = std::vector<Object*>();
+        Color refractedColor(Computation comps, int remaining)
+        {
+            if(comps.getObject()->getMaterial().getTransparency() == 0)
+            {
+                return Color::black();
+            }
+            double n_ratio = comps.getN1() / comps.getN2();
+            double cos_i = comps.getEyev().dot(comps.getNormalv());
+            double sin2_t = pow(n_ratio, 2) * (1 - pow(cos_i, 2));
+            double cos_t = sqrt(1.0 - sin2_t);
+            
+            Vector direction = to_vector(comps.getNormalv() * (n_ratio * cos_i - cos_t) - comps.getEyev() * n_ratio);
+            Ray refracted_ray = Ray(comps.getUnderPoint(), direction);
+
+            Color color = to_color(this->colorAt(refracted_ray, remaining - 1) * comps.getObject()->getMaterial().getTransparency());
+        
+            return color;
+        }
         Color reflectedColor(Computation comps, int remaining)
         {
             if(remaining <= 0)
@@ -1180,6 +1234,7 @@ class World
         }
         void addObject(Object* object)
         {
+            object->setId(object->getId() + std::to_string(this->objects.size() + 1));
             this->objects.push_back(object);
         }
         void setLight(Light light)
@@ -1816,28 +1871,28 @@ void feature_shadows()
 int main(int argc, char * argv[])
 {
 
-  Sphere floor = Sphere();
+    Plane floor = Plane();
     floor.setTransformation(Matrix::scaling(10, 0.01, 10));
     Material floor_material = Material();
     floor_material.setColor(Color(1,0.9,0.9));
     floor_material.setSpecular(0);
     floor.setMaterial(floor_material);
 
-    Sphere left_wall = Sphere();
+    Plane left_wall = Plane();
     left_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(-M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
     left_wall.setMaterial(Material());
 
-    Sphere right_wall = Sphere();
+    Plane right_wall = Plane();
     right_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
     right_wall.setMaterial(Material());
 
-    Sphere middle = Sphere();
-    Material middle_material = Material();
-    middle_material.setColor(Color(0.1,1,0.5));
-    middle_material.setDiffuse(0.7);
-    middle_material.setSpecular(0.3);
-    middle_material.setReflective(0.3);
-    middle.setMaterial(middle_material);
+    Sphere middle = Sphere::glassSphere();
+    // Material middle_material = Material();
+    // middle_material.setColor(Color(0.1,1,0.5));
+    // middle_material.setDiffuse(0.7);
+    // middle_material.setSpecular(0.3);
+    // middle_material.setReflective(0.3);
+    // middle.setMaterial(middle_material);
     middle.setTransformation(Matrix::translation(-0.5,1,0.5));
 
     Sphere right = Sphere();
