@@ -739,6 +739,18 @@ class Material
             this->transparency = 0.0;
             this->refractive_index = 1.0;
         }
+        static Material glassMaterial()
+        {
+            Material material = Material();
+            material.setTransparency(0.9);
+            material.setReflective(0.9);
+            material.setDiffuse(0.1);
+            material.setAmbient(0.1);
+            material.setSpecular(1);
+            material.setShininess(300);
+            material.setColor(Color(1,1,0.9));
+            return material;
+        }
         void setAmbient(double ambient)
         {
             this->ambient = ambient;
@@ -1057,6 +1069,7 @@ class Computation
         Point under_point;
         Vector reflectv;
         double n1,n2;
+       
     public:
         Computation(Intersection intersection, Ray ray, Intersections xs = Intersections())
         {
@@ -1084,13 +1097,8 @@ class Computation
             std::vector<Object*> containers = std::vector<Object*>();
             while(!xs.empty())
             {
-                std::optional<Intersection> hit = xs.hit();
-                if(!hit.has_value()) 
-                {
-                    continue;
-                }
-                bool isHit = hit.value() == intersection;
-                if(!isHit) std::cout << std::boolalpha << "isHit "<< isHit << std::endl;
+                std::optional<Intersection> i = xs.hit();
+                bool isHit = i.value() == intersection;
                 if(isHit)
                 {
                     if(containers.empty())
@@ -1102,7 +1110,7 @@ class Computation
                         this->n1 = containers.back()->getMaterial().getRefractiveIndex();
                     }
                 }
-                Object* needle = hit.value().getObject();
+                Object* needle = i.value().getObject();
                 auto it = std::find(containers.begin(), containers.end(), needle);
                 if(it != containers.end())
                 {
@@ -1126,6 +1134,23 @@ class Computation
                     break;
                 }
             }
+        }
+        double shlick()
+        {
+            double cos = this->eyev.dot(this->normalv);
+            if(this->n1 > this->n2)
+            {
+                double n = this->n1 / this->n2;
+                double sin2_t = pow(n,2) * (1.0 - pow(cos,2));
+                if(sin2_t > 1.0)
+                {
+                    return 1.0;
+                }
+                double cos_t = sqrt(1.0 - sin2_t);
+                cos = cos_t;
+            }
+            double r0 = pow(((this->n1 - this->n2) / (this->n1 + this->n2)),2);
+            return r0 + (1 - r0) * pow((1 - cos),5);
         }
         Point getPoint() { return this->point; }
         Point getOverPoint() { return this->over_point; }
@@ -1230,6 +1255,14 @@ class World
             Color reflected = reflectedColor(comps, remaining);
 
             Color refracted = refractedColor(comps, remaining);
+
+            Material material = comps.getObject()->getMaterial();
+
+            if(material.getReflective() > 0 && material.getTransparency() > 0)
+            {
+                double reflectance = comps.shlick();
+                return to_color(surface + reflected + refracted * (1 - reflectance));
+            }
 
             return to_color(surface + reflected + refracted);
         }
@@ -1882,6 +1915,52 @@ void shadow_is_hit(){
     assert(b2 == true && "Shadows");
 }
 
+void chapter11()
+{
+
+    Plane floor = Plane();
+    floor.setTransformation(Matrix::scaling(10, 0.01, 10));
+    Material floor_material = Material::glassMaterial();
+    floor.setMaterial(floor_material);
+
+    Sphere middle = Sphere();
+    Material middle_material = Material();
+    middle_material.setColor(Color(0.1,1,0.5));
+    middle_material.setDiffuse(0.7);
+    middle_material.setSpecular(0.3);
+    middle_material.setReflective(0.3);
+    middle.setMaterial(middle_material);
+    middle.setTransformation(Matrix::translation(-0.5,1,0.5));
+
+    Sphere right = Sphere();
+    Material right_material = Material();
+    right_material.setColor(Color(0.5,1,0.1));
+    right_material.setDiffuse(0.7);
+    right_material.setSpecular(0.3);
+    right.setMaterial(right_material);
+    right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
+
+    Sphere left = Sphere();
+    Material left_material = Material();
+    left_material.setColor(Color(1,0.8,0.1));
+    left_material.setDiffuse(0.7);
+    left_material.setSpecular(0.3);
+    left.setMaterial(left_material);
+    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
+
+    World world = World();
+    world.setLight(PointLight(Point(-10,10,-10), Color(1,1,1)));
+    world.addObject(&middle);
+    world.addObject(&left);
+    world.addObject(&right);
+    world.addObject(&floor);
+  
+    Camera camera = Camera(640,320, M_PI /3);
+    camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
+    Canvas image = render_multi_threaded(camera, world);
+    image.toPPM("my_render.ppm");
+}
+
 void feature_matrices()
 {
     multiplying_a_product_by_its_inverse();
@@ -1895,59 +1974,6 @@ void feature_shadows()
 int main(int argc, char * argv[])
 {
 
-    Plane floor = Plane();
-    floor.setTransformation(Matrix::scaling(10, 0.01, 10));
-    Material floor_material = Material();
-    floor_material.setColor(Color(1,0.9,0.9));
-    floor_material.setSpecular(0);
-    floor.setMaterial(floor_material);
-
-    Plane left_wall = Plane();
-    left_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(-M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
-    left_wall.setMaterial(Material());
-
-    Plane right_wall = Plane();
-    right_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
-    right_wall.setMaterial(Material());
-
-    Sphere middle = Sphere::glassSphere();
-    // Material middle_material = Material();
-    // middle_material.setColor(Color(0.1,1,0.5));
-    // middle_material.setDiffuse(0.7);
-    // middle_material.setSpecular(0.3);
-    // middle_material.setReflective(0.3);
-    // middle.setMaterial(middle_material);
-    middle.setTransformation(Matrix::translation(-0.5,1,0.5));
-
-    Sphere right = Sphere::glassSphere();
-    // Material right_material = Material();
-    // right_material.setColor(Color(0.5,1,0.1));
-    // right_material.setDiffuse(0.7);
-    // right_material.setSpecular(0.3);
-    // right.setMaterial(right_material);
-    right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
-
-    Sphere left = Sphere::glassSphere();
-    // Material left_material = Material();
-    // left_material.setColor(Color(1,0.8,0.1));
-    // left_material.setDiffuse(0.7);
-    // left_material.setSpecular(0.3);
-    // left.setMaterial(left_material);
-    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
-
-    World world = World();
-    world.setLight(PointLight(Point(-10,10,-10), Color(1,1,1)));
-    world.addObject(&middle);
-    world.addObject(&left);
-    world.addObject(&right);
-    world.addObject(&left_wall);
-    world.addObject(&right_wall);
-    world.addObject(&floor);
-  
-    Camera camera = Camera(160,80, M_PI /3);
-    camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
-    Canvas image = render_multi_threaded(camera, world);
-    image.toPPM("my_render.ppm");
 
     feature_matrices();
     feature_shadows();
@@ -1962,6 +1988,7 @@ int main(int argc, char * argv[])
     chapter7();
     chapter9();
     chapter10();
+    chapter11();
 
     return 0;
 }
