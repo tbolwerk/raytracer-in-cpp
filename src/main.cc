@@ -8,6 +8,8 @@
 #include <optional>
 #include <thread>
 #include <future>
+#include <tuple>
+#include <limits>
 const double EPSILON = 0.00001;
 static bool equal(double a, double b)
 {
@@ -78,6 +80,10 @@ class Tuple {
         Tuple operator *(double n){
             return Tuple(x * n, y * n, z * n, w * n);
         }
+        Tuple operator -(double n)
+        {
+            return Tuple(x - n, y - n, z - n, w - n);
+        }
         Tuple operator /(const Tuple &other)
         {
             return Tuple(x / other.x, y / other.y, z / other.z, w / other.w);
@@ -113,6 +119,22 @@ class Tuple {
         bool operator <=(const Tuple &other) const
         {
             return this->x <= other.x && this->y <= other.y && this->z <= other.z && this->w <= other.w;
+        }
+        bool operator >=(const Tuple &other) const
+        {
+            return this->x >= other.x && this->y >= other.y && this->z >= other.z && this->w >= other.w;
+        }
+        bool operator >=(const double other) const
+        {
+            return this->x >= other && this->y >= other && this->z >= other && this->w >= other;
+        }
+        bool operator >(const Tuple &other) const
+        {
+            return this->x > other.x && this->y > other.y && this->z > other.z && this->w > other.w;
+        }
+        const Tuple abs() const
+        {
+            return Tuple(fabs(this->x), fabs(this->y), fabs(this->z), fabs(this->w));
         }
         std::string toString()
         {
@@ -1025,6 +1047,102 @@ class Plane: public Hitable
         Vector localNormalAt(Point world_point)
         {
             return Vector(0,1,0);
+        }
+};
+
+std::tuple<double, double> check_axis(double origin, double direction)
+{
+    double tmin_numerator = (-1.0 - origin);
+    double tmax_numerator = ( 1.0 - origin);
+
+    double tmin;
+    double tmax;
+
+    if(fabs(direction) >= EPSILON)
+    {
+        tmin = tmin_numerator / direction;
+        tmax = tmax_numerator / direction;
+    }
+    else
+    {
+        tmin = tmin_numerator * std::numeric_limits<double>::max();
+        tmax = tmax_numerator * std::numeric_limits<double>::max();
+    }
+
+    if(tmin > tmax) 
+    {
+        return std::make_tuple(tmax, tmin);
+    }
+
+    return std::make_tuple(tmin, tmax);
+}
+
+
+
+class Cube: public Hitable
+{
+    private:
+        double max(double a, double b, double c)
+        {
+            if(a > b && a > c)
+            {
+                return a;
+            }
+            if(b > a && b > c)
+            {
+                return b;
+            }
+            return c;
+        }
+        double min(double a, double b, double c)
+        {
+            if(a < b && a < c)
+            {
+                return a;
+            }
+            if(b < a && b < c)
+            {
+                return b;
+            }
+            return c;
+        }
+    public:
+        Cube()
+        {
+            this->id = "unit_cube";
+            this->position = Point(0,0,0);
+            this->material = Material();
+            this->material.setAmbient(1);
+        }
+        std::vector<Intersection> localIntersect(Ray local_ray)
+        {
+            std::tuple<double, double> xtmin_xtmax = check_axis(local_ray.getOrigin().getX(), local_ray.getDirection().getX());
+            std::tuple<double, double> ytmin_ytmax = check_axis(local_ray.getOrigin().getY(), local_ray.getDirection().getY());
+            std::tuple<double, double> ztmin_ztmax = check_axis(local_ray.getOrigin().getZ(), local_ray.getDirection().getZ());
+
+            double tmin = this->max(get<0>(xtmin_xtmax), get<0>(ytmin_ytmax), get<0>(ztmin_ztmax));
+            double tmax = this->min(get<1>(xtmin_xtmax), get<1>(ytmin_ytmax), get<1>(ztmin_ztmax));
+
+            if(tmin > tmax)
+            {
+                return std::vector<Intersection>();
+            }
+
+            return std::vector<Intersection>({Intersection(tmin, this), Intersection(tmax, this)});
+        }
+        Vector localNormalAt(Point world_point)
+        {
+            double maxc = this->max(fabs(world_point.getX()), fabs(world_point.getY()), fabs(world_point.getZ()));
+
+            if(maxc == fabs(world_point.getX()))
+            {
+                return Vector(world_point.getX(), 0, 0);
+            }
+            else if(maxc == fabs(world_point.getY()))
+            {
+                return Vector(0,world_point.getY(), 0);
+            }
+            return Vector(0,0,world_point.getZ());
         }
 };
 
@@ -1958,7 +2076,53 @@ void chapter11()
     Camera camera = Camera(640,320, M_PI /3);
     camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
     Canvas image = render_multi_threaded(camera, world);
-    image.toPPM("my_render.ppm");
+    image.toPPM("chapter11.ppm");
+}
+
+void chapter12()
+{
+
+    Plane floor = Plane();
+    floor.setTransformation(Matrix::scaling(10, 0.01, 10));
+    Material floor_material = Material::glassMaterial();
+    floor.setMaterial(floor_material);
+
+    Cube middle = Cube();
+    Material middle_material = Material();
+    middle_material.setColor(Color(0.1,1,0.5));
+    middle_material.setDiffuse(0.7);
+    middle_material.setSpecular(0.3);
+    middle_material.setReflective(0.3);
+    middle.setMaterial(middle_material);
+    middle.setTransformation(Matrix::translation(-0.5,1,0.5));
+
+    Cube right = Cube();
+    Material right_material = Material();
+    right_material.setColor(Color(0.5,1,0.1));
+    right_material.setDiffuse(0.7);
+    right_material.setSpecular(0.3);
+    right.setMaterial(right_material);
+    right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
+
+    Cube left = Cube();
+    Material left_material = Material();
+    left_material.setColor(Color(1,0.8,0.1));
+    left_material.setDiffuse(0.7);
+    left_material.setSpecular(0.3);
+    left.setMaterial(left_material);
+    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
+
+    World world = World();
+    world.setLight(PointLight(Point(-10,10,-10), Color(1,1,1)));
+    world.addObject(&middle);
+    world.addObject(&left);
+    world.addObject(&right);
+    world.addObject(&floor);
+  
+    Camera camera = Camera(640,320, M_PI /3);
+    camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
+    Canvas image = render_multi_threaded(camera, world);
+    image.toPPM("chapter12.ppm");
 }
 
 void feature_matrices()
@@ -1989,6 +2153,7 @@ int main(int argc, char * argv[])
     chapter9();
     chapter10();
     chapter11();
+    chapter12();
 
     return 0;
 }
