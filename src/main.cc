@@ -739,6 +739,18 @@ class Material
             this->transparency = 0.0;
             this->refractive_index = 1.0;
         }
+        static Material glassMaterial()
+        {
+            Material material = Material();
+            material.setTransparency(0.9);
+            material.setReflective(0.9);
+            material.setDiffuse(0.1);
+            material.setAmbient(0.1);
+            material.setSpecular(1);
+            material.setShininess(300);
+            material.setColor(Color(1,1,0.9));
+            return material;
+        }
         void setAmbient(double ambient)
         {
             this->ambient = ambient;
@@ -861,6 +873,10 @@ class Intersection
         bool operator >(const Intersection &intersection) const
         {
             return this->time > intersection.time;
+        }
+        bool operator ==(const Intersection &intersection) const
+        {
+            return this->toString() == intersection.toString();
         }
 };
 
@@ -1053,10 +1069,11 @@ class Computation
         Point under_point;
         Vector reflectv;
         double n1,n2;
+       
     public:
         Computation(Intersection intersection, Ray ray, Intersections xs = Intersections())
         {
-            /*if(xs.empty())*/ xs.push(std::vector<Intersection>({intersection}));
+            xs.push(std::vector<Intersection>({intersection})); //TODO: add its own intersection, since we just popped it.
             this->t = intersection.getTime();
             this->object = intersection.getObject();
             this->point = ray.position(this->t);
@@ -1080,34 +1097,60 @@ class Computation
             std::vector<Object*> containers = std::vector<Object*>();
             while(!xs.empty())
             {
-                std::optional<Intersection> hit = xs.hit();
-                if(hit.has_value())
+                std::optional<Intersection> i = xs.hit();
+                bool isHit = i.value() == intersection;
+                if(isHit)
                 {
                     if(containers.empty())
                     {
                         this->n1 = 1.0;
-                        this->n2 = 1.0;
                     }
                     else
                     {
                         this->n1 = containers.back()->getMaterial().getRefractiveIndex();
-                        this->n2 = containers.back()->getMaterial().getRefractiveIndex();
                     }
-                    break;
                 }
-                Object* needle = hit.value().getObject();
-                auto find_object = [] (std::vector<Object*> list, Object * needle) { return (std::find_if(list.begin(), list.end(), [needle](Object* obj) { return obj->getId() == needle->getId();}));  };
-                auto includes = [find_object] (std::vector<Object*> list, Object * needle) { return (find_object(list, needle) != list.end()); };
-                
-                if(includes(containers, needle))
+                Object* needle = i.value().getObject();
+                auto it = std::find(containers.begin(), containers.end(), needle);
+                if(it != containers.end())
                 {
-                    containers.erase(std::remove(containers.begin(), containers.end(), *find_object(containers, needle)), containers.end());
+                    containers.erase(it);
                 }
                 else
                 {
                     containers.push_back(needle);
                 }
+
+                if(isHit)
+                {
+                    if(containers.empty())
+                    {
+                        this->n2 = 1.0;
+                    }
+                    else
+                    {
+                        this->n2 = containers.back()->getMaterial().getRefractiveIndex();
+                    }
+                    break;
+                }
             }
+        }
+        double shlick()
+        {
+            double cos = this->eyev.dot(this->normalv);
+            if(this->n1 > this->n2)
+            {
+                double n = this->n1 / this->n2;
+                double sin2_t = pow(n,2) * (1.0 - pow(cos,2));
+                if(sin2_t > 1.0)
+                {
+                    return 1.0;
+                }
+                double cos_t = sqrt(1.0 - sin2_t);
+                cos = cos_t;
+            }
+            double r0 = pow(((this->n1 - this->n2) / (this->n1 + this->n2)),2);
+            return r0 + (1 - r0) * pow((1 - cos),5);
         }
         Point getPoint() { return this->point; }
         Point getOverPoint() { return this->over_point; }
@@ -1174,7 +1217,11 @@ class World
             double n_ratio = comps.getN1() / comps.getN2();
             double cos_i = comps.getEyev().dot(comps.getNormalv());
             double sin2_t = pow(n_ratio, 2) * (1 - pow(cos_i, 2));
-            double cos_t = sqrt(1.0 - sin2_t);
+            if(sin2_t > 1.0)
+            {
+                return Color::black();
+            }
+            double cos_t = sqrtf(1.0 - sin2_t);
             
             Vector direction = to_vector(comps.getNormalv() * (n_ratio * cos_i - cos_t) - comps.getEyev() * n_ratio);
             Ray refracted_ray = Ray(comps.getUnderPoint(), direction);
@@ -1207,7 +1254,17 @@ class World
 
             Color reflected = reflectedColor(comps, remaining);
 
-            return to_color(surface + reflected);
+            Color refracted = refractedColor(comps, remaining);
+
+            Material material = comps.getObject()->getMaterial();
+
+            if(material.getReflective() > 0 && material.getTransparency() > 0)
+            {
+                double reflectance = comps.shlick();
+                return to_color(surface + reflected + refracted * (1 - reflectance));
+            }
+
+            return to_color(surface + reflected + refracted);
         }
         Intersections intersectWorld(Ray ray)
         {
@@ -1247,7 +1304,7 @@ class World
             std::optional<Intersection> m_intersection = xs.hit();
             if(m_intersection.has_value()){
                 Intersection hit = m_intersection.value();
-                Computation comps = Computation(hit, ray);
+                Computation comps = Computation(hit, ray, xs);
                 return shadeHit(comps, remaining);
             }
             return Color::black();
@@ -1858,41 +1915,21 @@ void shadow_is_hit(){
     assert(b2 == true && "Shadows");
 }
 
-void feature_matrices()
-{
-    multiplying_a_product_by_its_inverse();
-}
-
-void feature_shadows()
-{
-    shadow_is_hit();
-}
-
-int main(int argc, char * argv[])
+void chapter11()
 {
 
     Plane floor = Plane();
     floor.setTransformation(Matrix::scaling(10, 0.01, 10));
-    Material floor_material = Material();
-    floor_material.setColor(Color(1,0.9,0.9));
-    floor_material.setSpecular(0);
+    Material floor_material = Material::glassMaterial();
     floor.setMaterial(floor_material);
 
-    Plane left_wall = Plane();
-    left_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(-M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
-    left_wall.setMaterial(Material());
-
-    Plane right_wall = Plane();
-    right_wall.setTransformation(Matrix::translation(0,0,5) * Matrix::rotation_y(M_PI/4) * Matrix::rotation_x(M_PI/2) * Matrix::scaling(10,0.01,10));
-    right_wall.setMaterial(Material());
-
-    Sphere middle = Sphere::glassSphere();
-    // Material middle_material = Material();
-    // middle_material.setColor(Color(0.1,1,0.5));
-    // middle_material.setDiffuse(0.7);
-    // middle_material.setSpecular(0.3);
-    // middle_material.setReflective(0.3);
-    // middle.setMaterial(middle_material);
+    Sphere middle = Sphere();
+    Material middle_material = Material();
+    middle_material.setColor(Color(0.1,1,0.5));
+    middle_material.setDiffuse(0.7);
+    middle_material.setSpecular(0.3);
+    middle_material.setReflective(0.3);
+    middle.setMaterial(middle_material);
     middle.setTransformation(Matrix::translation(-0.5,1,0.5));
 
     Sphere right = Sphere();
@@ -1916,14 +1953,27 @@ int main(int argc, char * argv[])
     world.addObject(&middle);
     world.addObject(&left);
     world.addObject(&right);
-    world.addObject(&left_wall);
-    world.addObject(&right_wall);
     world.addObject(&floor);
   
-    Camera camera = Camera(160,80, M_PI /3);
+    Camera camera = Camera(640,320, M_PI /3);
     camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
     Canvas image = render_multi_threaded(camera, world);
     image.toPPM("my_render.ppm");
+}
+
+void feature_matrices()
+{
+    multiplying_a_product_by_its_inverse();
+}
+
+void feature_shadows()
+{
+    shadow_is_hit();
+}
+
+int main(int argc, char * argv[])
+{
+
 
     feature_matrices();
     feature_shadows();
@@ -1938,6 +1988,7 @@ int main(int argc, char * argv[])
     chapter7();
     chapter9();
     chapter10();
+    chapter11();
 
     return 0;
 }
