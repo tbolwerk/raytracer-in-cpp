@@ -2094,7 +2094,7 @@ void chapter12()
     middle_material.setSpecular(0.3);
     middle_material.setReflective(0.3);
     middle.setMaterial(middle_material);
-    middle.setTransformation(Matrix::translation(-0.5,1,0.5));
+    middle.setTransformation(Matrix::translation(-0.5,1,0.5).rotate_y(radians(45)));
 
     Cube right = Cube();
     Material right_material = Material();
