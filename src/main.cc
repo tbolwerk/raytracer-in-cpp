@@ -1050,38 +1050,35 @@ class Plane: public Hitable
         }
 };
 
-std::tuple<double, double> check_axis(double origin, double direction)
-{
-    double tmin_numerator = (-1.0 - origin);
-    double tmax_numerator = ( 1.0 - origin);
-
-    double tmin;
-    double tmax;
-
-    if(fabs(direction) >= EPSILON)
-    {
-        tmin = tmin_numerator / direction;
-        tmax = tmax_numerator / direction;
-    }
-    else
-    {
-        tmin = tmin_numerator * std::numeric_limits<double>::max();
-        tmax = tmax_numerator * std::numeric_limits<double>::max();
-    }
-
-    if(tmin > tmax) 
-    {
-        return std::make_tuple(tmax, tmin);
-    }
-
-    return std::make_tuple(tmin, tmax);
-}
-
-
-
 class Cube: public Hitable
 {
     private:
+        std::tuple<double, double> check_axis(double origin, double direction)
+        {
+            double tmin_numerator = (-1.0 - origin);
+            double tmax_numerator = ( 1.0 - origin);
+
+            double tmin;
+            double tmax;
+
+            if(fabs(direction) >= EPSILON)
+            {
+                tmin = tmin_numerator / direction;
+                tmax = tmax_numerator / direction;
+            }
+            else
+            {
+                tmin = tmin_numerator * std::numeric_limits<double>::max();
+                tmax = tmax_numerator * std::numeric_limits<double>::max();
+            }
+
+            if(tmin > tmax) 
+            {
+                return std::make_tuple(tmax, tmin);
+            }
+
+            return std::make_tuple(tmin, tmax);
+        }
         double max(double a, double b, double c)
         {
             if(a > b && a > c)
@@ -1116,9 +1113,9 @@ class Cube: public Hitable
         }
         std::vector<Intersection> localIntersect(Ray local_ray)
         {
-            std::tuple<double, double> xtmin_xtmax = check_axis(local_ray.getOrigin().getX(), local_ray.getDirection().getX());
-            std::tuple<double, double> ytmin_ytmax = check_axis(local_ray.getOrigin().getY(), local_ray.getDirection().getY());
-            std::tuple<double, double> ztmin_ztmax = check_axis(local_ray.getOrigin().getZ(), local_ray.getDirection().getZ());
+            std::tuple<double, double> xtmin_xtmax = this->check_axis(local_ray.getOrigin().getX(), local_ray.getDirection().getX());
+            std::tuple<double, double> ytmin_ytmax = this->check_axis(local_ray.getOrigin().getY(), local_ray.getDirection().getY());
+            std::tuple<double, double> ztmin_ztmax = this->check_axis(local_ray.getOrigin().getZ(), local_ray.getDirection().getZ());
 
             double tmin = this->max(get<0>(xtmin_xtmax), get<0>(ytmin_ytmax), get<0>(ztmin_ztmax));
             double tmax = this->min(get<1>(xtmin_xtmax), get<1>(ytmin_ytmax), get<1>(ztmin_ztmax));
@@ -1143,6 +1140,110 @@ class Cube: public Hitable
                 return Vector(0,world_point.getY(), 0);
             }
             return Vector(0,0,world_point.getZ());
+        }
+};
+
+class Cylinder: public Hitable
+{
+    private:
+        double minimum;
+        double maximum;
+        bool closed;
+        bool checkCap(Ray ray, double t)
+        {
+            double x = ray.getOrigin().getX() + t * ray.getDirection().getX();
+            double z = ray.getOrigin().getZ() + t * ray.getDirection().getZ();
+
+            return (pow(x,2) + pow(z,2)) <= 1;
+        }
+        std::vector<Intersection> intersectCaps(Ray ray, std::vector<Intersection> xs)
+        {
+            if(!this->closed || equal(ray.getDirection().getY(),0))
+            {
+                return xs;
+            }
+
+            double t0 = (this->maximum - ray.getOrigin().getY()) / ray.getDirection().getY();
+            if(this->checkCap(ray, t0))
+            {
+                xs.push_back(Intersection(t0, this));
+            }
+
+            double t1 = (this->minimum - ray.getOrigin().getY()) / ray.getDirection().getY();
+            if(this->checkCap(ray, t1))
+            {
+                xs.push_back(Intersection(t1, this));
+            }
+
+            return xs;
+        }
+    public:
+        Cylinder()
+        {
+            this->id = "unit_cylinder";
+            this->position = Point(0,0,0);
+            this->material = Material();
+            this->material.setAmbient(1);
+            this->minimum = std::numeric_limits<double>::min();
+            this->maximum = std::numeric_limits<double>::max();
+            this->closed = false;
+        }
+        std::vector<Intersection> localIntersect(Ray local_ray)
+        {
+            double a = pow(local_ray.getDirection().getX(),2) + pow(local_ray.getDirection().getZ(),2);
+            if(equal(a, 0))
+            {
+                return std::vector<Intersection>();
+            }
+            double b = 2 * local_ray.getOrigin().getX() * local_ray.getDirection().getX()
+                     + 2 * local_ray.getOrigin().getZ() * local_ray.getDirection().getZ();
+            double c = pow(local_ray.getOrigin().getX(),2) + pow(local_ray.getOrigin().getZ(),2) - 1;
+
+            double discriminant = pow(b,2) - 4 * a * c;
+
+            if(discriminant < 0)
+            {
+                return std::vector<Intersection>();
+            }
+
+            double t0 = (-b - sqrt(discriminant)) / (2 * a);
+            double t1 = (-b + sqrt(discriminant)) / (2 * a);
+
+            if(t0 > t1) //swap
+            {
+                double tmp = t0;
+                t0 = t1;
+                t1 = tmp;
+            }
+
+            std::vector<Intersection> xs = std::vector<Intersection>();
+
+            double y0 = local_ray.getOrigin().getY() + t0 + local_ray.getDirection().getY();
+            if(this->minimum < y0 && y0 < this->maximum)
+            {
+                xs.push_back(Intersection(t0, this));
+            } 
+
+            double y1 = local_ray.getOrigin().getY() + t1 + local_ray.getDirection().getY();
+            if(this->minimum < y1 && y1 < this->maximum)
+            {
+                xs.push_back(Intersection(t1, this));
+            } 
+
+            return intersectCaps(local_ray, xs);
+        }
+        Vector localNormalAt(Point world_point)
+        {
+            double dist = pow(world_point.getX(),2) + pow(world_point.getZ(),2);
+            if(dist < 1 && world_point.getY() >= this->maximum - EPSILON)
+            {
+                return Vector(0,1,0);
+            }
+            if(dist < 1 && world_point.getY() <= this->minimum + EPSILON)
+            {
+                return Vector(0,-1,0);
+            }
+            return Vector(world_point.getX(), 0, world_point.getZ());
         }
 };
 
@@ -2125,6 +2226,52 @@ void chapter12()
     image.toPPM("chapter12.ppm");
 }
 
+void chapter13()
+{
+
+    Plane floor = Plane();
+    floor.setTransformation(Matrix::scaling(10, 0.01, 10));
+    Material floor_material = Material::glassMaterial();
+    floor.setMaterial(floor_material);
+
+    Cylinder middle = Cylinder();
+    Material middle_material = Material();
+    middle_material.setColor(Color(0.1,1,0.5));
+    middle_material.setDiffuse(0.7);
+    middle_material.setSpecular(0.3);
+    middle_material.setReflective(0.3);
+    middle.setMaterial(middle_material);
+    middle.setTransformation(Matrix::translation(-0.5,1,0.5).rotate_y(radians(45)));
+
+    Cylinder right = Cylinder();
+    Material right_material = Material();
+    right_material.setColor(Color(0.5,1,0.1));
+    right_material.setDiffuse(0.7);
+    right_material.setSpecular(0.3);
+    right.setMaterial(right_material);
+    right.setTransformation(Matrix::translation(1.5,0.5,-0.5) * Matrix::scaling(0.5,0.5,0.5));
+
+    Cylinder left = Cylinder();
+    Material left_material = Material();
+    left_material.setColor(Color(1,0.8,0.1));
+    left_material.setDiffuse(0.7);
+    left_material.setSpecular(0.3);
+    left.setMaterial(left_material);
+    left.setTransformation(Matrix::translation(-1.5,0.33,-0.75) * Matrix::scaling(0.33,0.33,0.33));
+
+    World world = World();
+    world.setLight(PointLight(Point(-10,10,-10), Color(1,1,1)));
+    world.addObject(&middle);
+    world.addObject(&left);
+    world.addObject(&right);
+    world.addObject(&floor);
+  
+    Camera camera = Camera(640,320, M_PI /3);
+    camera.setTransform(view_transform(Point(0,1.5,-5),Point(0,1,0),Vector(0,1,0)));
+    Canvas image = render_multi_threaded(camera, world);
+    image.toPPM("chapter13.ppm");
+}
+
 void feature_matrices()
 {
     multiplying_a_product_by_its_inverse();
@@ -2154,6 +2301,7 @@ int main(int argc, char * argv[])
     chapter10();
     chapter11();
     chapter12();
+    chapter13();
 
     return 0;
 }
